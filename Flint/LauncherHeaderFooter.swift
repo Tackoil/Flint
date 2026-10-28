@@ -1,67 +1,129 @@
 import AppKit
 
+private final class LauncherFooterView: NSView {
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let hit = super.hitTest(point)
+        var ancestor = hit
+        while let view = ancestor, view !== self {
+            if view is NSControl { return hit }
+            ancestor = view.superview
+        }
+        return nil
+    }
+}
+
+private final class LauncherOpenButton: NSButton {
+    override var isEnabled: Bool {
+        didSet { subviews.first?.alphaValue = isEnabled ? 1 : 0.4 }
+    }
+
+    init() {
+        super.init(frame: .zero)
+        title = ""
+        isBordered = false
+        setAccessibilityLabel("Open Application")
+        toolTip = "Open selected application (Return)"
+        let content = Appearance.stack([
+            Appearance.label("Open Application", size: 12, color: .labelColor),
+            Appearance.keycap("↵")
+        ], spacing: 8)
+        content.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(content)
+        NSLayoutConstraint.activate([
+            heightAnchor.constraint(equalToConstant: 30),
+            content.leadingAnchor.constraint(equalTo: leadingAnchor),
+            content.trailingAnchor.constraint(equalTo: trailingAnchor),
+            content.centerYAnchor.constraint(equalTo: centerYAnchor)
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("Use init()") }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        super.hitTest(point) == nil ? nil : self
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        if isHighlighted {
+            NSColor.labelColor.withAlphaComponent(0.06).setFill()
+            NSBezierPath(roundedRect: bounds.insetBy(dx: -5, dy: 0), xRadius: 12, yRadius: 12).fill()
+        }
+        super.draw(dirtyRect)
+    }
+}
+
 final class LauncherHeaderFooter {
+    static let searchBarHeight: CGFloat = LauncherLayout.cornerRadius * 2
     let searchField = NSTextField()
-    let countLabel = Appearance.label("", size: 11)
-    let pathLabel = Appearance.label("", size: 11)
-    let refreshButton = Appearance.button("Refresh  ⌘R")
-    let dismissButton = Appearance.button("esc")
-    let openButton = Appearance.button("Open Application  ↵")
+    let openButton: NSButton = LauncherOpenButton()
     let settingsButton = Appearance.button("")
 
     func searchBar() -> NSView {
-        let icon = Appearance.symbol("magnifyingglass", size: 21, color: NSColor(white: 0.6, alpha: 1))
-        icon.widthAnchor.constraint(equalToConstant: 25).isActive = true
+        let icon = Appearance.symbol("magnifyingglass", size: 16, color: .secondaryLabelColor)
+        NSLayoutConstraint.activate([
+            icon.widthAnchor.constraint(equalToConstant: 20),
+            icon.heightAnchor.constraint(equalToConstant: 20)
+        ])
+        let searchFont = NSFont.systemFont(ofSize: 18)
+        searchField.font = searchFont
         searchField.placeholderAttributedString = NSAttributedString(
             string: "Search applications…",
-            attributes: [.foregroundColor: NSColor(white: 0.44, alpha: 1)]
+            attributes: [.font: searchFont, .foregroundColor: NSColor.secondaryLabelColor]
         )
-        searchField.font = .systemFont(ofSize: 23)
-        searchField.textColor = Appearance.text
+        searchField.textColor = .labelColor
         searchField.isBordered = false
         searchField.drawsBackground = false
         searchField.focusRingType = .none
         searchField.setAccessibilityLabel("Search applications")
         searchField.setContentHuggingPriority(.defaultLow, for: .horizontal)
         searchField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        dismissButton.wantsLayer = true
-        dismissButton.layer?.backgroundColor = NSColor(white: 1, alpha: 0.05).cgColor
-        dismissButton.layer?.cornerRadius = 5
-        dismissButton.widthAnchor.constraint(equalToConstant: 31).isActive = true
-        dismissButton.heightAnchor.constraint(equalToConstant: 23).isActive = true
-        dismissButton.setAccessibilityLabel("Hide launcher")
-        return inset(Appearance.stack([icon, searchField, dismissButton], spacing: 15), horizontal: 25, height: 83)
+        return searchBarLayout(icon: icon)
     }
 
-    func sectionBar() -> NSView {
-        let icon = Appearance.symbol("square.grid.2x2.fill", size: 12, color: Appearance.accent)
-        let title = Appearance.label("Applications", size: 12, weight: .semibold, color: NSColor(white: 0.75, alpha: 1))
-        return inset(Appearance.stack([icon, title, countLabel, Appearance.spacer(), refreshButton]), horizontal: 25, height: 43)
-    }
-
-    func selectionBar() -> NSView {
-        pathLabel.lineBreakMode = .byTruncatingMiddle
-        pathLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        return inset(Appearance.stack([pathLabel, Appearance.spacer()]), horizontal: 26, height: 27)
+    private func searchBarLayout(icon: NSView) -> NSView {
+        let bar = NSView()
+        for item in [icon, searchField] {
+            item.translatesAutoresizingMaskIntoConstraints = false
+            bar.addSubview(item)
+        }
+        NSLayoutConstraint.activate([
+            bar.heightAnchor.constraint(equalToConstant: Self.searchBarHeight),
+            icon.centerXAnchor.constraint(equalTo: bar.leadingAnchor, constant: LauncherLayout.iconCenterX),
+            icon.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
+            searchField.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: LauncherLayout.textLeading),
+            searchField.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -LauncherLayout.contentInset),
+            searchField.centerYAnchor.constraint(equalTo: bar.centerYAnchor, constant: 0.5)
+        ])
+        return bar
     }
 
     func footer() -> NSView {
-        let flame = Appearance.symbol("flame.fill", size: 14, color: Appearance.accent)
-        let brand = Appearance.label("flint", size: 13, weight: .semibold, color: NSColor(white: 0.73, alpha: 1))
         let navigation = Appearance.stack([
-            Appearance.keycap("↑"), Appearance.keycap("↓"), Appearance.label("Navigate", size: 11)
+            Appearance.label("Navigate", size: 12), Appearance.keycap("↑"), Appearance.keycap("↓")
         ], spacing: 4)
-        openButton.contentTintColor = NSColor(white: 0.8, alpha: 1)
-        openButton.font = .systemFont(ofSize: 11, weight: .medium)
-        settingsButton.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: "Settings")
+        navigation.setAccessibilityLabel("Use the Up and Down arrow keys to navigate")
+        let actions = Appearance.actionGroup(content: Appearance.stack([openButton, navigation], spacing: 16))
+        settingsButton.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: "Settings")?
+            .withSymbolConfiguration(.init(pointSize: 14, weight: .regular))
+        settingsButton.imagePosition = .imageOnly
+        settingsButton.isBordered = true
+        settingsButton.bezelStyle = .circular
+        if #available(macOS 26.0, *) {
+            settingsButton.bezelStyle = .glass
+            settingsButton.borderShape = .circle
+        }
         settingsButton.toolTip = "Settings (⌘,)"
         settingsButton.setAccessibilityLabel("Settings")
-        settingsButton.widthAnchor.constraint(equalToConstant: 25).isActive = true
-        return inset(Appearance.stack([flame, brand, settingsButton, Appearance.spacer(), navigation, openButton], spacing: 13), horizontal: 25, height: 48)
+        NSLayoutConstraint.activate([
+            settingsButton.widthAnchor.constraint(equalToConstant: LauncherLayout.floatingControlSize),
+            settingsButton.heightAnchor.constraint(equalToConstant: LauncherLayout.floatingControlSize)
+        ])
+        return inset(Appearance.stack([settingsButton, Appearance.spacer(), actions], spacing: 13),
+                     horizontal: LauncherLayout.floatingControlInset, height: LauncherLayout.footerHeight)
     }
 
     private func inset(_ content: NSView, horizontal: CGFloat, height: CGFloat) -> NSView {
-        let container = NSView()
+        let container = LauncherFooterView()
         content.translatesAutoresizingMaskIntoConstraints = false
         container.addSubview(content)
         NSLayoutConstraint.activate([

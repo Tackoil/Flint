@@ -68,11 +68,8 @@ final class SettingsViewController: NSViewController {
         shortcutRecorder.widthAnchor.constraint(equalToConstant: 177).isActive = true
         let row = Appearance.stack([labels, Appearance.spacer(), shortcutRecorder], spacing: 16)
         row.translatesAutoresizingMaskIntoConstraints = false
-        let card = NSView()
-        card.wantsLayer = true
+        let card = AppearanceSurfaceView(fillColor: .controlBackgroundColor, borderColor: .separatorColor)
         card.layer?.cornerRadius = 10
-        card.layer?.backgroundColor = NSColor(white: 1, alpha: 0.035).cgColor
-        card.layer?.borderColor = NSColor(white: 1, alpha: 0.08).cgColor
         card.layer?.borderWidth = 1
         card.addSubview(row)
         NSLayoutConstraint.activate([

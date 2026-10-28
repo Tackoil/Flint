@@ -9,6 +9,12 @@ private final class LauncherPanel: NSPanel {
 final class LauncherWindowController: NSWindowController, NSWindowDelegate {
     private let applicationsController = ApplicationsViewController()
     private let keepsOpenOnFocusLoss: Bool
+    private var isSearchExpanded: Bool?
+    private var placement: LauncherPlacement?
+    private var allowsResizeAnimation = false
+    private var transitionGeneration = 0
+    private var visibilityGeneration = 0
+    private(set) var isPresented = false
     var onShowSettings: (() -> Void)? {
         didSet { applicationsController.onShowSettings = onShowSettings }
     }
@@ -22,32 +28,87 @@ final class LauncherWindowController: NSWindowController, NSWindowDelegate {
         super.init(window: panel)
         panel.title = "Flint"
         panel.isReleasedWhenClosed = false
-        panel.hidesOnDeactivate = !keepsOpenOnFocusLoss
+        panel.hidesOnDeactivate = false
+        panel.animationBehavior = .none
         panel.isOpaque = false
         panel.backgroundColor = .clear
-        panel.hasShadow = true
+        panel.hasShadow = false
         panel.level = .floating
-        panel.isMovableByWindowBackground = true
+        panel.isMovableByWindowBackground = false
         panel.collectionBehavior = [.moveToActiveSpace, .fullScreenAuxiliary]
-        panel.appearance = NSAppearance(named: .darkAqua)
+        panel.appearance = nil
         panel.contentViewController = applicationsController
         panel.delegate = self
-        panel.center()
-        applicationsController.onDismiss = { [weak panel] in panel?.orderOut(nil) }
+        applicationsController.onDismiss = { [weak self] in self?.hideLauncher() }
+        applicationsController.onPresent = { [weak self] in self?.setPresented(true) }
+        applicationsController.onSearchExpansionChange = { [weak self] in self?.setSearchExpanded($0) }
     }
 
     required init?(coder: NSCoder) { fatalError("Use init()") }
 
     func showLauncher() {
-        NSApp.activate(ignoringOtherApps: true)
-        window?.makeKeyAndOrderFront(nil)
+        let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
+        guard window != nil, let screen else { return }
+        allowsResizeAnimation = false
+        placement = LauncherPlacement(visibleFrame: screen.visibleFrame,
+                                      expandedSize: NSSize(width: 760, height: 560))
+        isSearchExpanded = nil
         applicationsController.resetSearch()
+        setPresented(true)
+        allowsResizeAnimation = true
+    }
+
+    func hideLauncher() {
+        guard isPresented else { return }
+        setPresented(false)
+    }
+
+    private func setPresented(_ presented: Bool) {
+        guard let window else { return }
+        isPresented = presented
+        visibilityGeneration += 1
+        let generation = visibilityGeneration
+        window.ignoresMouseEvents = !presented
+        if presented {
+            if !window.isVisible { window.alphaValue = 0 }
+            NSApp.activate(ignoringOtherApps: true)
+            window.makeKeyAndOrderFront(nil)
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Appearance.launcherVisibilityDuration(appearing: presented)
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            window.animator().alphaValue = presented ? 1 : 0
+        } completionHandler: { [weak self, weak window] in
+            Task { @MainActor in
+                guard let self, self.visibilityGeneration == generation, !self.isPresented else { return }
+                window?.orderOut(nil)
+            }
+        }
+    }
+
+    private func setSearchExpanded(_ isExpanded: Bool) {
+        guard let window, let placement, self.isSearchExpanded != isExpanded else { return }
+        self.isSearchExpanded = isExpanded
+        transitionGeneration += 1
+        let generation = transitionGeneration
+        let height: CGFloat = isExpanded ? 560 : LauncherHeaderFooter.searchBarHeight
+        let frame = placement.frame(height: height)
+        let duration = allowsResizeAnimation ? Appearance.launcherTransitionDuration(for: window) : 0
+        // Keep the backing window still while the viewport reveals or clips the glass.
+        if isExpanded || duration == 0 {
+            window.setFrame(frame, display: true)
+            window.contentView?.layoutSubtreeIfNeeded()
+        }
+        Appearance.revealLauncher(height: height, on: applicationsController.view, duration: duration) { [weak self, weak window] in
+            guard let self, self.transitionGeneration == generation, let window, window.frame != frame else { return }
+            window.setFrame(frame, display: true)
+        }
     }
 
     func refreshApplications() { applicationsController.refreshApplications() }
 
     func windowDidResignKey(_ notification: Notification) {
         guard !keepsOpenOnFocusLoss, window?.attachedSheet == nil else { return }
-        window?.orderOut(nil)
+        hideLauncher()
     }
 }

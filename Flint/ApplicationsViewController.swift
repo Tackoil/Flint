@@ -1,34 +1,53 @@
 import AppKit
 
+private final class LauncherResultsScrollView: NSScrollView {
+    private let bottomFade = CAGradientLayer()
+
+    override func layout() {
+        super.layout()
+        wantsLayer = true
+        let fadeStart = max(0, 1 - (LauncherLayout.footerHeight + 24) / max(bounds.height, 1))
+        let opaque = NSColor.black.cgColor
+        let clear = NSColor.clear.cgColor
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        bottomFade.frame = bounds
+        bottomFade.startPoint = CGPoint(x: 0.5, y: isFlipped ? 0 : 1)
+        bottomFade.endPoint = CGPoint(x: 0.5, y: isFlipped ? 1 : 0)
+        bottomFade.colors = [opaque, opaque, clear]
+        bottomFade.locations = [0, NSNumber(value: Double(fadeStart)), 1]
+        layer?.mask = bottomFade
+        CATransaction.commit()
+    }
+}
+
 @MainActor
 final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     var onDismiss: (() -> Void)?
+    var onPresent: (() -> Void)?
     var onShowSettings: (() -> Void)?
+    var onSearchExpansionChange: ((Bool) -> Void)?
     private let chrome = LauncherHeaderFooter()
+    private let launcherContent = NSView(frame: NSRect(x: 0, y: 0, width: 760, height: 560))
+    private let resultsContainer = NSStackView()
     private let tableView = NSTableView()
-    private let scrollView = NSScrollView()
+    private let scrollView = LauncherResultsScrollView()
     private let statusLabel = Appearance.label("Finding your applications…", size: 14)
     private let iconCache = NSCache<NSString, NSImage>()
     private var applications: [ApplicationRecord] = []
     private var results: [ApplicationRecord] = []
     private var isLoading = false
     private var isOpening = false
+    private var isSearchExpanded = false
 
     override func loadView() {
-        view = NSView(frame: NSRect(x: 0, y: 0, width: 760, height: 560))
-        view.wantsLayer = true
-        view.layer?.backgroundColor = Appearance.background.cgColor
-        view.layer?.cornerRadius = 16
-        view.layer?.borderWidth = 1
-        view.layer?.borderColor = NSColor(white: 1, alpha: 0.12).cgColor
-        view.layer?.masksToBounds = true
+        view = Appearance.launcherSurface(content: launcherContent)
+        Appearance.setLauncherCornerRadius(LauncherLayout.cornerRadius, on: view)
+        launcherContent.wantsLayer = true
+        launcherContent.layer?.masksToBounds = true
         configureTable()
         configureLayout()
         chrome.searchField.delegate = self
-        chrome.refreshButton.target = self
-        chrome.refreshButton.action = #selector(refreshApplications)
-        chrome.dismissButton.target = self
-        chrome.dismissButton.action = #selector(dismissLauncher)
         chrome.openButton.target = self
         chrome.openButton.action = #selector(openSelectedApplication)
         chrome.openButton.isEnabled = false
@@ -40,12 +59,12 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     private func configureTable() {
         let column = NSTableColumn(identifier: ApplicationRowContent.identifier)
         column.resizingMask = .autoresizingMask
-        column.width = 734
+        column.width = 760
         tableView.addTableColumn(column)
         tableView.headerView = nil
         tableView.backgroundColor = .clear
         tableView.style = .plain
-        tableView.rowHeight = 54
+        tableView.rowHeight = LauncherLayout.resultRowHeight
         tableView.intercellSpacing = .zero
         tableView.allowsEmptySelection = false
         tableView.allowsMultipleSelection = false
@@ -60,6 +79,9 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         scrollView.hasVerticalScroller = true
         scrollView.autohidesScrollers = true
         scrollView.scrollerStyle = .overlay
+        scrollView.automaticallyAdjustsContentInsets = false
+        scrollView.contentInsets.bottom = LauncherLayout.footerHeight
+        scrollView.scrollerInsets.bottom = LauncherLayout.footerHeight
     }
 
     private func configureLayout() {
@@ -70,42 +92,54 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         statusLabel.maximumNumberOfLines = 3
         list.addSubview(scrollView)
         list.addSubview(statusLabel)
+        let footer = chrome.footer()
+        footer.translatesAutoresizingMaskIntoConstraints = false
+        list.addSubview(footer)
         NSLayoutConstraint.activate([
-            scrollView.leadingAnchor.constraint(equalTo: list.leadingAnchor, constant: 13),
-            scrollView.trailingAnchor.constraint(equalTo: list.trailingAnchor, constant: -13),
+            scrollView.leadingAnchor.constraint(equalTo: list.leadingAnchor),
+            scrollView.trailingAnchor.constraint(equalTo: list.trailingAnchor),
             scrollView.topAnchor.constraint(equalTo: list.topAnchor),
             scrollView.bottomAnchor.constraint(equalTo: list.bottomAnchor),
             statusLabel.centerXAnchor.constraint(equalTo: list.centerXAnchor),
             statusLabel.centerYAnchor.constraint(equalTo: list.centerYAnchor),
-            statusLabel.widthAnchor.constraint(lessThanOrEqualTo: list.widthAnchor, constant: -60)
+            statusLabel.widthAnchor.constraint(lessThanOrEqualTo: list.widthAnchor, constant: -60),
+            footer.leadingAnchor.constraint(equalTo: list.leadingAnchor),
+            footer.trailingAnchor.constraint(equalTo: list.trailingAnchor),
+            footer.bottomAnchor.constraint(equalTo: list.bottomAnchor)
         ])
-        let stack = NSStackView(views: [
-            chrome.searchBar(), Appearance.separator(), chrome.sectionBar(), list,
-            chrome.selectionBar(), Appearance.separator(), chrome.footer()
-        ])
-        stack.orientation = .vertical
-        stack.alignment = .width
-        stack.spacing = 0
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(stack)
+        let resultViews = [
+            Appearance.separator(), list
+        ]
+        resultViews.forEach { resultsContainer.addArrangedSubview($0) }
+        resultsContainer.orientation = .vertical
+        resultsContainer.alignment = .width
+        resultsContainer.spacing = 0
+        resultsContainer.isHidden = true
+        resultsContainer.alphaValue = 0
+        resultsContainer.translatesAutoresizingMaskIntoConstraints = false
+        let searchBar = chrome.searchBar()
+        searchBar.translatesAutoresizingMaskIntoConstraints = false
+        launcherContent.addSubview(searchBar)
+        launcherContent.addSubview(resultsContainer)
         NSLayoutConstraint.activate([
-            stack.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            stack.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            stack.topAnchor.constraint(equalTo: view.topAnchor),
-            stack.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            searchBar.leadingAnchor.constraint(equalTo: launcherContent.leadingAnchor),
+            searchBar.trailingAnchor.constraint(equalTo: launcherContent.trailingAnchor),
+            searchBar.topAnchor.constraint(equalTo: launcherContent.topAnchor),
+            resultsContainer.leadingAnchor.constraint(equalTo: launcherContent.leadingAnchor),
+            resultsContainer.trailingAnchor.constraint(equalTo: launcherContent.trailingAnchor),
+            resultsContainer.topAnchor.constraint(equalTo: searchBar.bottomAnchor),
+            resultsContainer.heightAnchor.constraint(equalToConstant: 560 - LauncherHeaderFooter.searchBarHeight)
         ])
     }
 
     @objc func refreshApplications() {
         guard !isLoading else { return }
         isLoading = true
-        chrome.refreshButton.isEnabled = false
         Task { [weak self] in
             let apps = await Task.detached(priority: .userInitiated) { ApplicationDiscovery.discover() }.value
             guard let self else { return }
             self.applications = apps
             self.isLoading = false
-            self.chrome.refreshButton.isEnabled = true
             self.iconCache.removeAllObjects()
             self.applyQuery()
         }
@@ -121,20 +155,40 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     func controlTextDidChange(_ obj: Notification) { applyQuery() }
 
     private func applyQuery() {
-        results = ApplicationSearch.filter(applications, query: chrome.searchField.stringValue)
-        chrome.countLabel.stringValue = "\(results.count)"
+        let query = chrome.searchField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isExpanded = !query.isEmpty
+        results = isExpanded ? ApplicationSearch.filter(applications, query: query) : []
         chrome.openButton.isEnabled = !results.isEmpty && !isOpening
-        updateEmptyState()
+        updateEmptyState(hasQuery: isExpanded)
         tableView.reloadData()
         if !results.isEmpty {
             tableView.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
             tableView.scrollRowToVisible(0)
         }
         updateSelection()
+        updateResultsVisibility(isExpanded)
+        onSearchExpansionChange?(isExpanded)
     }
 
-    private func updateEmptyState() {
-        statusLabel.isHidden = !results.isEmpty
+    private func updateResultsVisibility(_ isExpanded: Bool) {
+        guard isSearchExpanded != isExpanded else { return }
+        isSearchExpanded = isExpanded
+        resultsContainer.isHidden = false
+        let duration = Appearance.launcherTransitionDuration(for: view.window)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = duration
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            resultsContainer.animator().alphaValue = isExpanded ? 1 : 0
+        } completionHandler: { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self, self.isSearchExpanded == isExpanded else { return }
+                self.resultsContainer.isHidden = !isExpanded
+            }
+        }
+    }
+
+    private func updateEmptyState(hasQuery: Bool) {
+        statusLabel.isHidden = !results.isEmpty || !hasQuery
         if isLoading {
             statusLabel.stringValue = "Finding your applications…"
         } else if applications.isEmpty {
@@ -146,7 +200,6 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
 
     private func updateSelection() {
         let row = tableView.selectedRow
-        chrome.pathLabel.stringValue = results.indices.contains(row) ? results[row].url.path : ""
         let visible = tableView.rows(in: tableView.visibleRect)
         guard visible.location != NSNotFound else { return }
         for index in visible.location..<NSMaxRange(visible) {
@@ -181,8 +234,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
             return
         }
         guard let window = view.window else { return }
-        NSApp.activate(ignoringOtherApps: true)
-        window.makeKeyAndOrderFront(nil)
+        onPresent?()
         let alert = NSAlert()
         alert.messageText = "Couldn’t open \(app.name)"
         alert.informativeText = error.localizedDescription
@@ -207,7 +259,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
 
     private func moveSelection(by offset: Int) {
         guard !results.isEmpty else { return }
-        let row = (max(0, tableView.selectedRow) + offset + results.count) % results.count
+        let row = min(max(0, max(0, tableView.selectedRow) + offset), results.count - 1)
         tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
         tableView.scrollRowToVisible(row)
         updateSelection()

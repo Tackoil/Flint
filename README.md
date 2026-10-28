@@ -2,6 +2,12 @@
 
 A small Raycast-style application launcher built with AppKit for macOS 13 and later. No external dependencies.
 
+The launcher uses untinted Liquid Glass on macOS 26 and later, with a frosted material on older versions. Both panel states use the same glass surface, and the launcher and Settings follow the system’s light or dark appearance. The empty search bar is a compact capsule that expands to show results as you type. Expanding and collapsing animate from the same top edge with a consistent 28-point corner radius. Reduce Motion disables the transition.
+
+Each opening restores the launcher above the center of the display under the pointer, leaving room for the expanded results. Its top edge stays fixed while typing or clearing a search. Dragging the background does not move the launcher.
+
+The launcher fades in when shown and fades out when dismissed, including with Escape, the launcher shortcut, and clicking away. Reduce Motion disables these fades.
+
 ## Run
 
 Open `Flint.xcodeproj`, select the **Flint** scheme, and run on **My Mac**. Signing is disabled for local development.
@@ -25,7 +31,7 @@ Escape and your configured launcher shortcut still hide the launcher. Opening an
 
 Flint discovers installed applications in `/Applications`, `~/Applications`, `/System/Applications`, system CoreServices applications, and the system Cryptex applications folder. It includes category folders such as Utilities, skips apps embedded inside other apps, and deduplicates applications by bundle identifier. Discovery runs off the main thread, while native app icons load only for displayed rows.
 
-Type to filter applications. Search ignores case and diacritics and supports abbreviations such as `vsc` for Visual Studio Code. Exact names rank before prefixes, substrings, and abbreviation matches. Click an app or press Return to open it.
+The launcher opens as a compact search bar. Type to expand the application results; clearing the input collapses it again. Whitespace-only input also keeps it collapsed. Search ignores case and diacritics and supports abbreviations such as `vsc` for Visual Studio Code. Exact names rank before prefixes, substrings, and abbreviation matches. Click an app or press Return to open it.
 
 | Shortcut | Action |
 | --- | --- |
@@ -51,6 +57,7 @@ The discovery and search code is also a standalone Swift package:
 
 ```sh
 swift test
+sh scripts/check-appearance.sh
 cognitive --threshold 15 Sources Flint Tests
 ```
 

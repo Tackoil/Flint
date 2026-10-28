@@ -1,0 +1,88 @@
+{
+  "status": "Selected by sharp and item-blurred comparison, then checked in live folded and expanded panels",
+  "units": "logical AppKit points; top-left origin for design coordinates",
+  "method": "Compare multiple nearby placements with identical item size and blur. Keep each actual container sharp. Judge breathing room visually, then check unblurred at normal size. No centroid or universal blur rule is used to select positions.",
+  "reference": "https://detail.design/detail/blur-trick-for-the-optical-fit",
+  "comparisons": {
+    "icon_center_x": [
+      27,
+      28,
+      29
+    ],
+    "esc_button_distance_from_right": [
+      28,
+      31,
+      34
+    ],
+    "esc_lettering_vertical_offset": [
+      0,
+      -0.5,
+      -1
+    ],
+    "hint_vertical_offset": [
+      0,
+      -0.5,
+      -1.5
+    ]
+  },
+  "selected": {
+    "header": {
+      "width": 760,
+      "height": 56,
+      "corner_radius": 28
+    },
+    "icon_frame": [
+      18,
+      18,
+      20,
+      20
+    ],
+    "icon_center": [
+      28,
+      28
+    ],
+    "esc_button_frame": [
+      713.5,
+      16.5,
+      31,
+      23
+    ],
+    "esc_button_center": [
+      729,
+      28
+    ],
+    "esc_lettering_offset": [
+      0,
+      -1
+    ],
+    "text_field": {
+      "leading_x": 50,
+      "font_size": 18,
+      "vertical_offset": -0.5
+    },
+    "expanded_panel": {
+      "width": 760,
+      "height": 560,
+      "corner_radius": 28,
+      "same_header_geometry": true
+    }
+  },
+  "visual_rationale": {
+    "icon": "The existing 28-point anchor gives the most natural breathing room against the left curve in both sharp and blurred views; no extra glyph offset is retained.",
+    "esc_button": "The button is wider than the icon. Moving it 3 points inward gives its whole blurred mass more comfortable space against the right curve without drifting inward as far as the 34-point candidate.",
+    "esc_lettering": "A 1-point lift looks more balanced within the keycap. Its horizontal position is unchanged.",
+    "hint": "A 0.5-point lift looks balanced beside the icon at normal size; the earlier 1.5-point proposal appeared too high."
+  },
+  "blur_preview": "5-pixel Gaussian radius applied to padded transparent 2x assets, constant within comparisons. The entire Esc button, background included, is blurred for the button/bar check. Only letters are blurred for the letter/keycap check.",
+  "live_evidence": [
+    "live-folded.png",
+    "live-expanded.png"
+  ],
+  "preserved": [
+    "Liquid Glass material",
+    "28-point radius in both states",
+    "0.24-second fold/unfold animation",
+    "Reduce Motion behavior"
+  ],
+  "supersedes": "Earlier placement-study.svg and its centroid-derived candidate offsets; those files remain as the previous study."
+}

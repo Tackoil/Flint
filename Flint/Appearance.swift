@@ -1,10 +1,163 @@
 import AppKit
 
+enum LauncherLayout {
+    static let cornerRadius: CGFloat = 28
+    static let contentInset: CGFloat = 16
+    static let floatingControlSize: CGFloat = 36
+    static var floatingControlRadius: CGFloat { floatingControlSize / 2 }
+    // Match the controls' centers to the centers of the bottom corner arcs.
+    static var floatingControlInset: CGFloat { cornerRadius - floatingControlRadius }
+    static var footerHeight: CGFloat { cornerRadius * 2 }
+    static let resultRowHeight: CGFloat = 40
+    static let applicationIconSize: CGFloat = 28
+    static let rowSpacing: CGFloat = 16
+    static var rowHorizontalInset: CGFloat { iconCenterX - applicationIconSize / 2 }
+    static var iconCenterX: CGFloat { cornerRadius }
+    static var textLeading: CGFloat { rowHorizontalInset + applicationIconSize + rowSpacing }
+}
+
+private final class LauncherViewport: NSView {
+    override var isFlipped: Bool { true }
+}
+
+private final class LauncherSurfaceView: NSView {
+    private let materialView: NSView
+    private let materialHeight: CGFloat
+    private let viewport = LauncherViewport()
+
+    init(materialView: NSView) {
+        self.materialView = materialView
+        materialHeight = materialView.frame.height
+        super.init(frame: materialView.frame)
+        wantsLayer = true
+        layer?.masksToBounds = true
+        viewport.frame = bounds
+        viewport.autoresizingMask = [.width]
+        viewport.wantsLayer = true
+        viewport.layer?.masksToBounds = true
+        addSubview(viewport)
+        viewport.addSubview(materialView)
+    }
+
+    required init?(coder: NSCoder) { fatalError("Use init(materialView:)") }
+
+    override var isFlipped: Bool { true }
+
+    override func layout() {
+        super.layout()
+        // A top-left origin keeps the glass stationary as the viewport height changes.
+        let frame = NSRect(x: 0, y: 0, width: bounds.width, height: materialHeight)
+        guard materialView.frame != frame else { return }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        materialView.frame = frame
+        CATransaction.commit()
+    }
+
+    func setCornerRadius(_ radius: CGFloat) {
+        layer?.cornerRadius = radius
+        viewport.layer?.cornerRadius = radius
+        if #available(macOS 26.0, *), let glass = materialView as? NSGlassEffectView {
+            glass.cornerRadius = radius
+        } else {
+            materialView.layer?.cornerRadius = radius
+        }
+    }
+
+    func reveal(height: CGFloat, duration: TimeInterval, completion: @escaping @MainActor () -> Void) {
+        let size = NSSize(width: bounds.width, height: height)
+        guard duration > 0 else {
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            viewport.setFrameSize(size)
+            CATransaction.commit()
+            completion()
+            return
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = duration
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            viewport.animator().setFrameSize(size)
+        } completionHandler: {
+            Task { @MainActor in completion() }
+        }
+    }
+}
+
+final class AppearanceSurfaceView: NSView {
+    private let fillColor: NSColor
+    private let borderColor: NSColor
+
+    init(fillColor: NSColor, borderColor: NSColor = .clear) {
+        self.fillColor = fillColor
+        self.borderColor = borderColor
+        super.init(frame: .zero)
+        wantsLayer = true
+    }
+
+    required init?(coder: NSCoder) { fatalError("Use init(fillColor:borderColor:)") }
+
+    override var wantsUpdateLayer: Bool { true }
+
+    override func updateLayer() {
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            layer?.backgroundColor = fillColor.cgColor
+            layer?.borderColor = borderColor.cgColor
+        }
+    }
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        needsDisplay = true
+    }
+}
+
 enum Appearance {
-    static let background = NSColor(srgbRed: 0.085, green: 0.09, blue: 0.105, alpha: 0.97)
-    static let muted = NSColor(white: 0.50, alpha: 1)
-    static let text = NSColor(white: 0.93, alpha: 1)
+    static let muted = NSColor.secondaryLabelColor
+    static let text = NSColor.labelColor
     static let accent = NSColor(srgbRed: 1, green: 0.43, blue: 0.31, alpha: 1)
+
+    static func launcherTransitionDuration(for window: NSWindow?) -> TimeInterval {
+        guard window?.isVisible == true, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return 0 }
+        return 0.24
+    }
+
+    static func launcherVisibilityDuration(appearing: Bool) -> TimeInterval {
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return 0 }
+        return appearing ? 0.16 : 0.12
+    }
+
+    static func launcherSurface(content: NSView) -> NSView {
+        content.autoresizingMask = [.width, .height]
+        if #available(macOS 26.0, *) {
+            let glass = NSGlassEffectView(frame: content.frame)
+            glass.style = .regular
+            glass.tintColor = nil
+            glass.contentView = content
+            return LauncherSurfaceView(materialView: glass)
+        }
+        let effect = NSVisualEffectView(frame: content.frame)
+        effect.material = .hudWindow
+        effect.blendingMode = .behindWindow
+        effect.state = .active
+        effect.wantsLayer = true
+        effect.layer?.masksToBounds = true
+        effect.addSubview(content)
+        return LauncherSurfaceView(materialView: effect)
+    }
+
+    static func setLauncherCornerRadius(_ radius: CGFloat, on surface: NSView) {
+        (surface as? LauncherSurfaceView)?.setCornerRadius(radius)
+    }
+
+    @MainActor static func revealLauncher(height: CGFloat, on surface: NSView, duration: TimeInterval,
+                               completion: @escaping @MainActor () -> Void) {
+        guard let surface = surface as? LauncherSurfaceView else {
+            completion()
+            return
+        }
+        surface.reveal(height: height, duration: duration, completion: completion)
+    }
 
     static func label(_ text: String, size: CGFloat = 12, weight: NSFont.Weight = .regular, color: NSColor = muted) -> NSTextField {
         let label = NSTextField(labelWithString: text)
@@ -31,28 +184,49 @@ enum Appearance {
     }
 
     static func keycap(_ text: String) -> NSView {
-        let view = NSView()
-        view.wantsLayer = true
-        view.layer?.backgroundColor = NSColor(white: 1, alpha: 0.055).cgColor
-        view.layer?.borderColor = NSColor(white: 1, alpha: 0.09).cgColor
-        view.layer?.borderWidth = 0.5
-        view.layer?.cornerRadius = 4
-        let text = label(text, size: 11, weight: .medium, color: NSColor(white: 0.67, alpha: 1))
+        let view = AppearanceSurfaceView(fillColor: .clear, borderColor: .separatorColor)
+        view.layer?.borderWidth = 0.75
+        view.layer?.cornerRadius = 5
+        let text = label(text, size: 11, weight: .medium, color: .secondaryLabelColor)
         text.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(text)
         NSLayoutConstraint.activate([
-            view.widthAnchor.constraint(equalToConstant: 21),
-            view.heightAnchor.constraint(equalToConstant: 21),
+            view.widthAnchor.constraint(equalToConstant: 18),
+            view.heightAnchor.constraint(equalToConstant: 18),
             text.centerXAnchor.constraint(equalTo: view.centerXAnchor),
             text.centerYAnchor.constraint(equalTo: view.centerYAnchor)
         ])
         return view
     }
 
+    static func actionGroup(content: NSView) -> NSView {
+        let surface: NSView
+        if #available(macOS 26.0, *) {
+            let glass = NSGlassEffectView()
+            glass.style = .regular
+            glass.cornerRadius = LauncherLayout.floatingControlRadius
+            if #available(macOS 27.0, *) { glass.effectIsInteractive = true }
+            glass.contentView = content
+            surface = glass
+        } else {
+            let background = AppearanceSurfaceView(fillColor: .quaternaryLabelColor, borderColor: .separatorColor)
+            background.layer?.cornerRadius = LauncherLayout.floatingControlRadius
+            background.layer?.borderWidth = 0.5
+            background.addSubview(content)
+            surface = background
+        }
+        content.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            surface.heightAnchor.constraint(equalToConstant: LauncherLayout.floatingControlSize),
+            content.leadingAnchor.constraint(equalTo: surface.leadingAnchor, constant: 14),
+            content.trailingAnchor.constraint(equalTo: surface.trailingAnchor, constant: -12),
+            content.centerYAnchor.constraint(equalTo: surface.centerYAnchor)
+        ])
+        return surface
+    }
+
     static func separator() -> NSView {
-        let view = NSView()
-        view.wantsLayer = true
-        view.layer?.backgroundColor = NSColor(white: 1, alpha: 0.07).cgColor
+        let view = AppearanceSurfaceView(fillColor: .separatorColor)
         view.heightAnchor.constraint(equalToConstant: 1).isActive = true
         return view
     }

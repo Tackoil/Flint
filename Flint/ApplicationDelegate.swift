@@ -70,7 +70,7 @@ final class ApplicationDelegate: NSObject, NSApplicationDelegate {
     @objc private func refreshApplications() { launcher?.refreshApplications() }
 
     @objc private func showSettings() {
-        launcher?.window?.orderOut(nil)
+        launcher?.hideLauncher()
         if settingsController == nil {
             settingsController = SettingsWindowController(preferences: preferences, onShortcutChange: { [weak self] shortcut in
                 self?.changeShortcut(to: shortcut) ?? false
@@ -108,8 +108,8 @@ final class ApplicationDelegate: NSObject, NSApplicationDelegate {
 
     private func toggleLauncher() {
         guard let launcher else { return }
-        if launcher.window?.isKeyWindow == true {
-            launcher.window?.orderOut(nil)
+        if launcher.isPresented && launcher.window?.isKeyWindow == true {
+            launcher.hideLauncher()
         } else {
             launcher.showLauncher()
         }

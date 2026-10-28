@@ -16,7 +16,7 @@ final class SettingsWindowController: NSWindowController {
         super.init(window: window)
         window.title = "Flint Settings"
         window.isReleasedWhenClosed = false
-        window.appearance = NSAppearance(named: .darkAqua)
+        window.appearance = nil
         window.contentViewController = settingsController
         window.center()
     }
