@@ -1,4 +1,76 @@
 import AppKit
+import CoreText
+
+private final class LauncherSearchField: NSTextField, NSLayoutManagerDelegate {
+    override var stringValue: String { didSet { configureEditor() } }
+    private lazy var returnGlyph: CGGlyph = {
+        let font = self.font ?? .systemFont(ofSize: 18)
+        var character: UniChar = 0x23CE
+        var glyph: CGGlyph = 0
+        CTFontGetGlyphsForCharacters(font as CTFont, &character, &glyph, 1)
+        return glyph
+    }()
+
+    override func becomeFirstResponder() -> Bool {
+        let accepted = super.becomeFirstResponder()
+        configureEditor()
+        return accepted
+    }
+
+    override func textDidBeginEditing(_ notification: Notification) {
+        super.textDidBeginEditing(notification)
+        configureEditor()
+    }
+
+    override func textDidChange(_ notification: Notification) {
+        super.textDidChange(notification)
+        configureEditor()
+    }
+
+    private func configureEditor() {
+        guard let editor = currentEditor() as? NSTextView, let container = editor.textContainer else { return }
+        editor.isHorizontallyResizable = false
+        editor.layoutManager?.delegate = self
+        container.widthTracksTextView = false
+        container.maximumNumberOfLines = 1
+        container.lineBreakMode = .byTruncatingTail
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = .byTruncatingTail
+        editor.defaultParagraphStyle = paragraph
+        editor.typingAttributes[.paragraphStyle] = paragraph
+        // Truncate the presentation without removing characters or paragraph breaks.
+        editor.textStorage?.addAttribute(.paragraphStyle, value: paragraph,
+                                         range: NSRange(location: 0, length: editor.string.utf16.count))
+        container.containerSize = NSSize(width: max(1, editor.bounds.width), height: .greatestFiniteMagnitude)
+    }
+
+    func layoutManager(_ layoutManager: NSLayoutManager, shouldGenerateGlyphs glyphs: UnsafePointer<CGGlyph>,
+                       properties props: UnsafePointer<NSLayoutManager.GlyphProperty>,
+                       characterIndexes: UnsafePointer<Int>, font: NSFont, forGlyphRange range: NSRange) -> Int {
+        guard let source = layoutManager.textStorage?.string as NSString? else { return 0 }
+        let breaks = (0..<range.length).filter {
+            characterIndexes[$0] < source.length && [10, 13, 0x85, 0x2028, 0x2029].contains(Int(source.character(at: characterIndexes[$0])))
+        }
+        guard !breaks.isEmpty else { return 0 }
+        layoutManager.setGlyphs(glyphs, properties: props, characterIndexes: characterIndexes, font: font, forGlyphRange: range)
+        for index in breaks {
+            var characterIndex = characterIndexes[index]
+            let isCRLFContinuation = source.character(at: characterIndex) == 10
+                && characterIndex > 0 && source.character(at: characterIndex - 1) == 13
+            var glyph = isCRLFContinuation ? 0 : returnGlyph
+            var property: NSLayoutManager.GlyphProperty = isCRLFContinuation ? .null : []
+            // Substitute only the drawn glyph; the source still contains its original line break.
+            layoutManager.setGlyphs(&glyph, properties: &property, characterIndexes: &characterIndex,
+                                   font: self.font ?? font, forGlyphRange: NSRange(location: range.location + index, length: 1))
+        }
+        return range.length
+    }
+
+    func layoutManager(_ layoutManager: NSLayoutManager, shouldUse action: NSLayoutManager.ControlCharacterAction,
+                       forControlCharacterAt charIndex: Int) -> NSLayoutManager.ControlCharacterAction {
+        action.intersection([.lineBreak, .paragraphBreak]).isEmpty ? action : []
+    }
+}
 
 private final class LauncherSearchIcon: NSView {
     private let search = Appearance.symbol("magnifyingglass", size: 16, color: .secondaryLabelColor)
@@ -153,14 +225,13 @@ private final class LauncherModeButton: NSButton {
 
 final class LauncherHeaderFooter {
     static let searchBarHeight: CGFloat = LauncherLayout.cornerRadius * 2
-    let searchField = NSTextField()
+    let searchField: NSTextField = LauncherSearchField()
     let openButton: NSButton = LauncherOpenButton()
     let settingsButton = Appearance.button("")
     let roundingModeButton: NSButton = LauncherModeButton()
     let colorModeButton: NSButton = LauncherModeButton()
     let numberBaseModeButton: NSButton = LauncherModeButton()
     let translationExitButton: NSButton = LauncherOpenButton()
-    private var translationSearchHeight: NSLayoutConstraint?
     private let searchIcon = LauncherSearchIcon()
     private let navigation = Appearance.stack([
         Appearance.label("Navigate", size: 12, color: .labelColor), KeyboardHintView(.upArrow), KeyboardHintView(.downArrow)
@@ -184,7 +255,13 @@ final class LauncherHeaderFooter {
             searchIcon.heightAnchor.constraint(equalToConstant: 20)
         ])
         let searchFont = NSFont.systemFont(ofSize: 18)
+        searchField.isEditable = true
+        searchField.isSelectable = true
         searchField.font = searchFont
+        searchField.maximumNumberOfLines = 1
+        searchField.cell?.wraps = false
+        searchField.cell?.isScrollable = false
+        searchField.lineBreakMode = .byTruncatingTail
         searchField.placeholderAttributedString = NSAttributedString(
             string: "Search apps, actions, calculate, or translate…",
             attributes: [.font: searchFont, .foregroundColor: NSColor.secondaryLabelColor]
@@ -211,9 +288,9 @@ final class LauncherHeaderFooter {
             icon.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
             searchField.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: LauncherLayout.textLeading),
             searchField.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -LauncherLayout.contentInset),
+            searchField.heightAnchor.constraint(lessThanOrEqualToConstant: 22),
             searchField.centerYAnchor.constraint(equalTo: bar.centerYAnchor, constant: 0.5)
         ])
-        translationSearchHeight = searchField.heightAnchor.constraint(lessThanOrEqualToConstant: 22)
         return bar
     }
 
@@ -272,7 +349,6 @@ final class LauncherHeaderFooter {
     func setTranslationMode(_ enabled: Bool) {
         guard translationExitButton.isHidden == enabled else { return }
         animateActionLayout { translationExitButton.isHidden = !enabled }
-        translationSearchHeight?.isActive = enabled
         searchField.setAccessibilityLabel(enabled ? "Text to translate" : "Search applications, actions, calculate, or translate")
         searchField.placeholderString = enabled ? "Text to translate…" : "Search apps, actions, calculate, or translate…"
     }

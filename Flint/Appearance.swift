@@ -21,10 +21,120 @@ private final class LauncherViewport: NSView {
     override var isFlipped: Bool { true }
 }
 
+private final class LauncherGlowPanel: NSPanel {
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
+
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
+}
+
+private final class LauncherOutlineGlow: NSObject {
+    private static let margin: CGFloat = 20
+    weak var parentWindow: NSWindow?
+    private let panel: LauncherGlowPanel
+    private let canvasHeight: CGFloat
+    private let outline = CAShapeLayer()
+    private let outsideMask = CAShapeLayer()
+
+    init(parent: NSWindow, canvasHeight: CGFloat) {
+        parentWindow = parent
+        self.canvasHeight = canvasHeight
+        panel = LauncherGlowPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel],
+                                  backing: .buffered, defer: false)
+        super.init()
+        panel.isReleasedWhenClosed = false
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = false
+        panel.ignoresMouseEvents = true
+        panel.animationBehavior = .none
+        panel.collectionBehavior = parent.collectionBehavior
+        let canvas = LauncherViewport()
+        canvas.wantsLayer = true
+        panel.contentView = canvas
+        outline.name = "launcherTabGlow"
+        outline.fillColor = nil
+        outline.strokeColor = Appearance.accent.withAlphaComponent(0.65).cgColor
+        outline.lineWidth = 1
+        outline.shadowColor = Appearance.accent.cgColor
+        outline.shadowOpacity = 0.55
+        outline.shadowRadius = 6
+        outline.shadowOffset = .zero
+        outline.opacity = 0
+        outsideMask.fillRule = .evenOdd
+        outline.mask = outsideMask
+        canvas.layer?.addSublayer(outline)
+        alignFrame()
+        parent.addChildWindow(panel, ordered: .above)
+        for name in [NSWindow.didMoveNotification, NSWindow.didResizeNotification] {
+            NotificationCenter.default.addObserver(self, selector: #selector(alignFrame), name: name, object: parent)
+        }
+    }
+
+    deinit { NotificationCenter.default.removeObserver(self) }
+
+    @objc private func alignFrame() {
+        guard let parentWindow else { return }
+        let margin = Self.margin
+        panel.setFrame(NSRect(x: parentWindow.frame.minX - margin,
+                              y: parentWindow.frame.maxY - canvasHeight - margin,
+                              width: parentWindow.frame.width + 2 * margin,
+                              height: canvasHeight + 2 * margin), display: false)
+        outline.frame = panel.contentView?.bounds ?? .zero
+        outsideMask.frame = outline.bounds
+    }
+
+    func setOutline(size: NSSize, radius: CGFloat, duration: TimeInterval) {
+        alignFrame()
+        let rect = CGRect(origin: CGPoint(x: Self.margin, y: Self.margin), size: size)
+        let path = CGPath(roundedRect: rect.insetBy(dx: -0.5, dy: -0.5),
+                          cornerWidth: radius + 0.5, cornerHeight: radius + 0.5, transform: nil)
+        let mask = CGMutablePath()
+        mask.addRect(outline.bounds)
+        mask.addRoundedRect(in: rect, cornerWidth: radius, cornerHeight: radius)
+        // Exclude the entire panel interior, including the inward half of the halo.
+        setPath(path, on: outline, duration: duration)
+        setPath(mask, on: outsideMask, duration: duration)
+    }
+
+    private func setPath(_ path: CGPath, on layer: CAShapeLayer, duration: TimeInterval) {
+        let previous = (layer.presentation() ?? layer).path
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.path = path
+        CATransaction.commit()
+        layer.removeAnimation(forKey: "outlineResize")
+        guard duration > 0, let previous else { return }
+        let resize = CABasicAnimation(keyPath: "path")
+        resize.fromValue = previous
+        resize.toValue = path
+        resize.duration = duration
+        resize.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        layer.add(resize, forKey: "outlineResize")
+    }
+
+    func pulse() {
+        let pulse = CAKeyframeAnimation(keyPath: "opacity")
+        pulse.values = [(outline.presentation() ?? outline).opacity, 0.75, 0]
+        pulse.keyTimes = [0, 0.18, 1]
+        pulse.duration = 0.8
+        pulse.timingFunctions = [CAMediaTimingFunction(name: .easeOut),
+                                 CAMediaTimingFunction(controlPoints: 0.2, 0, 0.2, 1)]
+        outline.add(pulse, forKey: "tabGlowPulse")
+    }
+
+    func dismiss() {
+        panel.parent?.removeChildWindow(panel)
+        panel.orderOut(nil)
+    }
+}
+
 private final class LauncherSurfaceView: NSView {
     private let materialView: NSView
     private let materialHeight: CGFloat
     private let viewport = LauncherViewport()
+    private var tabGlow: LauncherOutlineGlow?
+    private var cornerRadius = LauncherLayout.cornerRadius
 
     init(materialView: NSView) {
         self.materialView = materialView
@@ -44,6 +154,11 @@ private final class LauncherSurfaceView: NSView {
 
     override var isFlipped: Bool { true }
 
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        if tabGlow?.parentWindow !== window { cancelTabGlow() }
+    }
+
     override func layout() {
         super.layout()
         // A top-left origin keeps the glass stationary as the viewport height changes.
@@ -56,8 +171,10 @@ private final class LauncherSurfaceView: NSView {
     }
 
     func setCornerRadius(_ radius: CGFloat) {
+        cornerRadius = radius
         layer?.cornerRadius = radius
         viewport.layer?.cornerRadius = radius
+        tabGlow?.setOutline(size: viewport.bounds.size, radius: radius, duration: 0)
         if #available(macOS 26.0, *), let glass = materialView as? NSGlassEffectView {
             glass.cornerRadius = radius
         } else {
@@ -65,8 +182,26 @@ private final class LauncherSurfaceView: NSView {
         }
     }
 
+    func pulseTabGlow() {
+        guard let window, Appearance.launcherTransitionDuration(for: window) > 0 else {
+            cancelTabGlow()
+            return
+        }
+        if tabGlow == nil {
+            tabGlow = LauncherOutlineGlow(parent: window, canvasHeight: materialHeight)
+            tabGlow?.setOutline(size: viewport.bounds.size, radius: cornerRadius, duration: 0)
+        }
+        tabGlow?.pulse()
+    }
+
+    func cancelTabGlow() {
+        tabGlow?.dismiss()
+        tabGlow = nil
+    }
+
     func reveal(height: CGFloat, duration: TimeInterval, completion: @escaping @MainActor () -> Void) {
         let size = NSSize(width: bounds.width, height: height)
+        tabGlow?.setOutline(size: size, radius: cornerRadius, duration: duration)
         guard duration > 0 else {
             CATransaction.begin()
             CATransaction.setDisableActions(true)
@@ -241,6 +376,14 @@ enum Appearance {
 
     static func setLauncherCornerRadius(_ radius: CGFloat, on surface: NSView) {
         (surface as? LauncherSurfaceView)?.setCornerRadius(radius)
+    }
+
+    @MainActor static func pulseLauncherGlow(on surface: NSView) {
+        (surface as? LauncherSurfaceView)?.pulseTabGlow()
+    }
+
+    @MainActor static func cancelLauncherGlow(on surface: NSView) {
+        (surface as? LauncherSurfaceView)?.cancelTabGlow()
     }
 
     @MainActor static func revealLauncher(height: CGFloat, on surface: NSView, duration: TimeInterval,

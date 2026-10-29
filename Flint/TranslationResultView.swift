@@ -69,7 +69,9 @@ final class TranslationResultView: NSView {
     required init?(coder: NSCoder) { fatalError("Use init(frame:)") }
 
     func configure(_ session: TranslationSession) {
-        heading.stringValue = "Auto-detect → \(session.language.rawValue) · DeepSeek"
+        let source = session.sourceLanguage?.displayName ?? "Auto-detect"
+        heading.stringValue = "\(source) → \(session.language.rawValue) · DeepSeek"
+        heading.toolTip = sourceLanguageHelp(session.sourceLanguage)
         let answer = session.state.answer ?? ""
         if output.string != answer {
             output.string = answer
@@ -92,5 +94,10 @@ final class TranslationResultView: NSView {
             detail.stringValue = message
             detail.textColor = .systemRed
         }
+    }
+
+    private func sourceLanguageHelp(_ language: InferredSourceLanguage?) -> String {
+        guard let language else { return "The source language will be inferred when enough text is available." }
+        return language.origin == .deepSeek ? "Source language inferred by DeepSeek." : "Source language inferred on this Mac."
     }
 }

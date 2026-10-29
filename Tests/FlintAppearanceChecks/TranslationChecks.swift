@@ -1,7 +1,9 @@
 import AppKit
+import CoreText
 
 @MainActor
 func checkTranslationIntegration() {
+    checkSearchTruncation()
     checkSearchTabFocus()
     let session = TranslationSession(readAPIKey: { nil })
     let controller = ApplicationsViewController(translationSession: session)
@@ -58,6 +60,68 @@ func checkTranslationIntegration() {
 }
 
 @MainActor
+private func checkSearchTruncation() {
+    let header = LauncherHeaderFooter()
+    let bar = header.searchBar()
+    let window = AppearanceCheckWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 56),
+                                       styleMask: [.borderless], backing: .buffered, defer: false)
+    window.contentView = bar
+    AppearanceCheckWindows.show(window)
+    defer { window.orderOut(nil) }
+    bar.layoutSubtreeIfNeeded()
+    window.makeFirstResponder(header.searchField)
+    let editor = header.searchField.currentEditor() as! NSTextView
+    let source = String(repeating: "Long translation input with all of its words preserved. ", count: 12)
+    editor.insertText(source, replacementRange: NSRange(location: 0, length: editor.string.utf16.count))
+    let container = editor.textContainer!
+    let manager = editor.layoutManager!
+    manager.ensureLayout(for: container)
+    precondition(header.searchField.stringValue == source && editor.string == source)
+    precondition(header.searchField.lineBreakMode == .byTruncatingTail)
+    precondition(container.maximumNumberOfLines == 1 && container.lineBreakMode == .byTruncatingTail)
+    renderTranslationPreview(bar, name: "search-truncated")
+    precondition(manager.truncatedGlyphRange(inLineFragmentForGlyphAt: 0).location != NSNotFound,
+                 "Long focused search input must end with an ellipsis: container \(container.containerSize), editor \(editor.frame)")
+    let pasteboard = NSPasteboard.withUniqueName()
+    defer { pasteboard.releaseGlobally() }
+    let examples = [("search-paragraphs", "First paragraph.\n\n" + source),
+                    ("search-crlf", "First paragraph.\r\nSecond paragraph.\r\n" + source),
+                    ("search-line-separators", "First paragraph.\u{2028}Second paragraph.\u{2029}" + source)]
+    for (name, multiline) in examples {
+        pasteboard.setString(multiline, forType: .string)
+        editor.selectAll(nil)
+        precondition(editor.readSelection(from: pasteboard, type: .string))
+        manager.ensureLayout(for: container)
+        precondition(header.searchField.stringValue == multiline, "Single-line presentation must preserve pasted paragraphs")
+        var lines = 0
+        manager.enumerateLineFragments(forGlyphRange: manager.glyphRange(for: container)) { _, _, _, _, _ in lines += 1 }
+        precondition(lines == 1, "Pasted paragraphs must not wrap below the search bar")
+        let lineBreak = (multiline as NSString).rangeOfCharacter(from: .newlines).location
+        let glyph = manager.glyphIndexForCharacter(at: lineBreak)
+        precondition(manager.cgGlyph(at: glyph) != 0 && !manager.propertyForGlyph(at: glyph).contains(.controlCharacter),
+                     "Line breaks must draw a visible return symbol")
+        checkReturnSymbolSpacing(manager, source: multiline as NSString, lineBreak: lineBreak, font: header.searchField.font!)
+        precondition(manager.truncatedGlyphRange(inLineFragmentForGlyphAt: 0).location != NSNotFound,
+                     "Hidden pasted paragraphs must also be indicated by an ellipsis")
+        renderTranslationPreview(bar, name: name)
+    }
+    print("PASS: focused search truncates to one line, draws return symbols, and preserves original LF, CRLF, and Unicode line breaks")
+}
+
+@MainActor
+private func checkReturnSymbolSpacing(_ manager: NSLayoutManager, source: NSString, lineBreak: Int, font: NSFont) {
+    let isCRLF = source.character(at: lineBreak) == 13 && source.character(at: lineBreak + 1) == 10
+    let symbolIndex = manager.glyphIndexForCharacter(at: lineBreak)
+    let nextIndex = manager.glyphIndexForCharacter(at: lineBreak + (isCRLF ? 2 : 1))
+    var symbol = manager.cgGlyph(at: symbolIndex)
+    var advance = CGSize.zero
+    CTFontGetAdvancesForGlyphs(font as CTFont, .horizontal, &symbol, &advance, 1)
+    let spacing = manager.location(forGlyphAt: nextIndex).x - manager.location(forGlyphAt: symbolIndex).x
+    precondition(abs(spacing - advance.width) < 1,
+                 "Return symbols must use their natural width, without extra spacing or overlap: \(spacing) vs \(advance.width)")
+}
+
+@MainActor
 private func checkSearchTabFocus() {
     let controller = ApplicationsViewController(translationSession: TranslationSession(readAPIKey: { nil }))
     let window = AppearanceCheckWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
@@ -80,7 +144,7 @@ private func checkSearchTabFocus() {
     (search.currentEditor() as! NSTextView).insertText("hello", replacementRange: NSRange(location: NSNotFound, length: 0))
     precondition(search.stringValue == "hello", "Typing after Tab must go straight into the search bar")
     controller.resetSearch()
-    for query in ["Finder", "2+2", "#abc"] {
+    for query in ["Finder", "3+", "#zzzz"] {
         search.stringValue = query
         controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
         (search.currentEditor() as! NSTextView).doCommand(by: #selector(NSResponder.insertTab(_:)))
@@ -148,8 +212,9 @@ private func checkTranslationSuccess() {
         let body = try JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]
         let messages = body["messages"] as! [[String: String]]
         precondition(messages.last?["content"] == source, "Multiline source must reach DeepSeek intact")
+        let payload = try JSONSerialization.data(withJSONObject: ["translation": expected, "source_language": "en"])
         let data = try JSONSerialization.data(withJSONObject: [
-            "choices": [["message": ["content": expected], "finish_reason": "stop"]]
+            "choices": [["message": ["content": String(data: payload, encoding: .utf8)!], "finish_reason": "stop"]]
         ])
         return (data, HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
     }
@@ -174,6 +239,13 @@ private func checkTranslationSuccess() {
         RunLoop.current.run(until: Date().addingTimeInterval(0.01))
     }
     precondition(session.state.answer == expected)
+    precondition(session.sourceLanguage?.code == "en")
+    precondition(session.sourceLanguage?.origin == .deepSeek)
+    let heading = translationDescendants(controller.view).compactMap { $0 as? NSTextField }
+        .first { $0.stringValue == "English → \(session.language.rawValue) · DeepSeek" }
+    precondition(heading != nil && !heading!.isHiddenOrHasHiddenAncestor,
+                 "Translation must show the inferred source language")
+    precondition(heading!.toolTip == "Source language inferred by DeepSeek.")
     controller.view.layoutSubtreeIfNeeded()
     let result = views.compactMap { $0 as? TranslationResultView }.first!
     precondition(search.frame.height < 40, "Multiline source text must stay inside the search bar")
@@ -201,6 +273,8 @@ private func checkTranslationSuccess() {
     search.stringValue = "new text"
     controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
     precondition(session.state == .waiting && session.state.answer == nil && text.string.isEmpty)
+    precondition(session.sourceLanguage == nil)
+    precondition(heading!.stringValue == "Auto-detect → \(session.language.rawValue) · DeepSeek")
     controller.resetSearch()
     precondition(!controller.isTranslationMode && controller.displayMode == .collapsed)
     print("PASS: translation starts automatically after a pause, with scrollable output, exact copying, edit invalidation, and reopening reset")

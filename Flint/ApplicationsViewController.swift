@@ -530,6 +530,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     @objc private func showSettings() { onShowSettings?() }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        animateTabFeedback(for: commandSelector, editor: textView)
         if handleTranslationCommand(commandSelector) { return true }
         if handleNumberBaseModeCommand(commandSelector) { return true }
         if handleNumberBaseFormatCommand(commandSelector) { return true }
@@ -549,6 +550,13 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         guard let action = actions[commandSelector] else { return false }
         action()
         return true
+    }
+
+    private func animateTabFeedback(for selector: Selector, editor: NSTextView) {
+        guard selector == #selector(NSResponder.insertTab(_:)), !editor.hasMarkedText(),
+              NSApp.currentEvent?.isARepeat != true,
+              NSApp.currentEvent?.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty != false else { return }
+        Appearance.pulseLauncherGlow(on: view)
     }
 
     private func handleTranslationCommand(_ selector: Selector) -> Bool {

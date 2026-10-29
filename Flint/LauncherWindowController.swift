@@ -93,6 +93,7 @@ final class LauncherWindowController: NSWindowController, NSWindowDelegate {
         visibilityGeneration += 1
         let generation = visibilityGeneration
         window.ignoresMouseEvents = !presented
+        if !presented { Appearance.cancelLauncherGlow(on: applicationsController.view) }
         if presented {
             if !window.isVisible { window.alphaValue = 0 }
             #if FLINT_APPEARANCE_CHECKS
