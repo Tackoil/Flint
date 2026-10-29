@@ -134,6 +134,11 @@ private final class LauncherModeButton: NSButton {
                label: isSwitchingColors ? "Edit color" : "Switch format")
     }
 
+    func update(isSwitchingNumberBases: Bool) {
+        update(hint: isSwitchingNumberBases ? .upArrow : .downArrow,
+               label: isSwitchingNumberBases ? "Edit number" : "Switch base")
+    }
+
     private func update(hint: KeyboardHint, label: String) {
         if content.hint != hint { content.hint = hint }
         if content.label != label { content.label = label }
@@ -153,6 +158,7 @@ final class LauncherHeaderFooter {
     let settingsButton = Appearance.button("")
     let roundingModeButton: NSButton = LauncherModeButton()
     let colorModeButton: NSButton = LauncherModeButton()
+    let numberBaseModeButton: NSButton = LauncherModeButton()
     let translationExitButton: NSButton = LauncherOpenButton()
     private var translationSearchHeight: NSLayoutConstraint?
     private let searchIcon = LauncherSearchIcon()
@@ -165,6 +171,9 @@ final class LauncherHeaderFooter {
     private let previousColorFormat = KeyboardHintView(.leftArrow)
     private let nextColorFormat = KeyboardHintView(.rightArrow)
     private lazy var colorFormatControls = Appearance.stack([previousColorFormat, nextColorFormat], spacing: 12)
+    private let previousNumberBase = KeyboardHintView(.leftArrow)
+    private let nextNumberBase = KeyboardHintView(.rightArrow)
+    private lazy var numberBaseControls = Appearance.stack([previousNumberBase, nextNumberBase], spacing: 12)
     private let timestampUnitHint = KeyboardHintView(.rightArrow, label: "ms")
     private var footerContent: NSView?
     private var actionGroup: ActionGroupView?
@@ -215,12 +224,15 @@ final class LauncherHeaderFooter {
         timestampUnitHint.isHidden = true
         colorFormatControls.isHidden = true
         colorModeButton.isHidden = true
+        numberBaseControls.isHidden = true
+        numberBaseModeButton.isHidden = true
         translationExitButton.isHidden = true
         (translationExitButton as? LauncherOpenButton)?.updateTitle("Exit", hint: .escape)
         translationExitButton.setAccessibilityLabel("Exit translation mode")
         translationExitButton.toolTip = "Return to search (Escape)"
         let actions = Appearance.actionGroup(content: Appearance.stack(
-            [openButton, translationExitButton, navigation, precisionControls, roundingModeButton, timestampUnitHint, colorFormatControls, colorModeButton], spacing: 16))
+            [openButton, translationExitButton, navigation, precisionControls, roundingModeButton, timestampUnitHint,
+             colorFormatControls, colorModeButton, numberBaseControls, numberBaseModeButton], spacing: 16))
         actions.wantsLayer = true
         actionGroup = actions as? ActionGroupView
         settingsButton.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: "Settings")?
@@ -295,7 +307,8 @@ final class LauncherHeaderFooter {
         let hints = [
             (roundingModeButton as? LauncherModeButton)?.content,
             (colorModeButton as? LauncherModeButton)?.content,
-            previousColorFormat, nextColorFormat, timestampUnitHint
+            (numberBaseModeButton as? LauncherModeButton)?.content,
+            previousColorFormat, nextColorFormat, previousNumberBase, nextNumberBase, timestampUnitHint
         ].compactMap { $0 }
         guard let hint = hints.first(where: { $0.hint == key && !$0.isHiddenOrHasHiddenAncestor }) else {
             action()
@@ -341,6 +354,22 @@ final class LauncherHeaderFooter {
         let help = "Left switches to \(previous); Right switches to \(next). Up edits the color."
         colorFormatControls.setAccessibilityLabel(help)
         colorFormatControls.toolTip = help
+    }
+
+    func setNumberBaseSwitching(_ format: NumberBaseConversion.Format?, isEnabled: Bool) {
+        animateActionLayout {
+            numberBaseModeButton.isHidden = format == nil
+            (numberBaseModeButton as? LauncherModeButton)?.update(isSwitchingNumberBases: isEnabled)
+            numberBaseControls.isHidden = format == nil || !isEnabled
+            guard let format else { return }
+            let previous = format.shifted(by: -1).title
+            let next = format.shifted(by: 1).title
+            if previousNumberBase.label != previous { previousNumberBase.label = previous }
+            if nextNumberBase.label != next { nextNumberBase.label = next }
+            let help = "Left switches to \(previous); Right switches to \(next). Up edits the number."
+            numberBaseControls.setAccessibilityLabel(help)
+            numberBaseControls.toolTip = help
+        }
     }
 
     private func animateActionLayout(_ updates: () -> Void) {

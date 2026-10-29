@@ -2,6 +2,7 @@ import AppKit
 
 final class CalculatorResultView: NSView {
     private let colorView = ColorResultView()
+    private let numberBaseView = NumberBaseResultView()
     private var calculationViews: [NSView] = []
     private let expressionLabel = Appearance.label("", size: 36, weight: .medium, color: .labelColor)
     private let answerLabel = Appearance.label("", size: 36, weight: .medium, color: .labelColor)
@@ -43,7 +44,14 @@ final class CalculatorResultView: NSView {
         colorView.translatesAutoresizingMaskIntoConstraints = false
         colorView.isHidden = true
         addSubview(colorView)
+        numberBaseView.translatesAutoresizingMaskIntoConstraints = false
+        numberBaseView.isHidden = true
+        addSubview(numberBaseView)
         NSLayoutConstraint.activate([
+            numberBaseView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            numberBaseView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            numberBaseView.topAnchor.constraint(equalTo: topAnchor),
+            numberBaseView.bottomAnchor.constraint(equalTo: bottomAnchor),
             colorView.leadingAnchor.constraint(equalTo: leadingAnchor),
             colorView.trailingAnchor.constraint(equalTo: trailingAnchor),
             colorView.topAnchor.constraint(equalTo: topAnchor),
@@ -73,11 +81,23 @@ final class CalculatorResultView: NSView {
 
     func configure(_ result: CalculatorResult) {
         let color = colorConversion(from: result)
+        let number = numberBaseConversion(from: result)
         colorView.isHidden = color == nil
-        calculationViews.forEach { $0.isHidden = color != nil }
+        numberBaseView.isHidden = number == nil
+        calculationViews.forEach { $0.isHidden = color != nil || number != nil }
         if case .numeric(let calculation) = result { configureNumeric(calculation) }
         if case .timestamp(let calculation) = result { configureTimestamp(calculation) }
         if let color { configureColor(color) }
+        if let number {
+            numberBaseView.configure(number)
+            setAccessibilityLabel(numberBaseView.accessibilityLabel())
+            toolTip = number.answer
+        }
+    }
+
+    private func numberBaseConversion(from result: CalculatorResult) -> NumberBaseConversion? {
+        guard case .numberBase(let number) = result else { return nil }
+        return number
     }
 
     private func configureNumeric(_ calculation: NumericCalculation) {

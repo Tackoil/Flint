@@ -82,6 +82,16 @@ Entering `1710513000` converts seconds to Zulu; `1710513000123` automatically co
 
 Your local date and time, including its UTC offset at that instant, appears as a hint beneath the Zulu timestamp in either direction. Zulu timestamps may include up to nine fractional digits; these remain visible in the source and local-time hint. Unix answers use whole seconds or milliseconds, dropping any finer precision without rounding. Unix input must be a non-negative integer, with an optional leading `+`, and resolve to a date earlier than year 10000. Fractional or negative Unix input, Zulu timestamps before `1970-01-01T00:00:00Z`, incomplete timestamps, impossible dates, and timestamps without the `Z` suffix stay in normal search.
 
+## Number Base Conversion
+
+Type a hexadecimal (`0xff`), binary (`0b101010`), or explicitly marked decimal (`0d255`) integer into search to see **DEC**, **HEX**, and **BIN** equivalents. Prefixes and hex digits ignore case. Bare integers keep their Unix timestamp behavior, and `#` colors keep their color conversion behavior.
+
+Press **Left / Right** to cycle through the selected output, wrapping at either end. Hex and binary input initially select decimal output; decimal input initially selects hex. A format you select stays selected while using the launcher; reopening restores the defaults. The selected row is emphasized, and the footer names each arrow's destination. Press **Return** or click **Copy Number** to copy the selected value and dismiss Flint. Decimal output has no prefix; hex uses `0x` and uppercase digits, and binary uses `0b`. Binary digits are grouped in fours for display; copying removes the spaces. Long values use smaller monospaced text so every digit stays visible.
+
+Press **Up** or click **Edit number ↑** to use Left/Right for cursor movement. Press **Down** or click **Switch base ↓** to resume output switching. Editing mode and the selected output survive incomplete input. Modified arrows retain normal text editing behavior. Reopening Flint restores output switching.
+
+Conversion runs offline with exact integer arithmetic. Magnitudes range from 0 through 18,446,744,073,709,551,615 (64 bits). An optional leading `-` applies the same range to negative magnitudes, and negatives retain a minus sign in every base; negative zero becomes zero. An optional leading `+` is also accepted. Invalid digits, incomplete prefixes, fractions, arithmetic, digit separators, and overflowing values stay in normal search.
+
 ## Color Conversion
 
 Type a color into search to preview it and copy it in another format. Flint recognizes 3, 4, 6, and 8 digit hex colors (`#f63`, `#ff636380`); `rgb()` and `rgba()` with commas or spaces (`rgb(255, 99, 99)`, `rgb(255 99 99 / 50%)`); `hsl()` and `hsla()`; and `hwb()`, `lab()`, `lch()`, `oklab()`, and `oklch()`.
@@ -126,4 +136,4 @@ cognitive --threshold 15 Sources Flint Tests
 
 Desktop appearance checks run offscreen by default and do not activate their windows or take keyboard focus. To intentionally watch the windows during a visual inspection, run `FLINT_UI_TESTS_VISIBLE=1 sh scripts/check-appearance.sh`. Image previews can still be rendered to files while the windows stay offscreen.
 
-This version contains application search and launching, DeepSeek translation, numeric calculations, color conversion, system actions, and shortcut settings.
+This version contains application search and launching, DeepSeek translation, numeric calculations, number base and color conversion, system actions, and shortcut settings.

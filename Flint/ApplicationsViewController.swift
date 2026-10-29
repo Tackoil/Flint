@@ -42,6 +42,8 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     private(set) var isTranslationMode = false
     private var calculation: CalculatorResult?
     private var colorOutputFormat: ColorConversion.Format?
+    private var numberBaseOutputFormat: NumberBaseConversion.Format?
+    private var isNumberBaseSwitchingEnabled = true
     private var isColorSwitchingEnabled = true
     private var isRoundingEnabled = true
     private var timestampOutputUnit = TimestampCalculation.Unit.seconds
@@ -87,6 +89,8 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         chrome.roundingModeButton.action = #selector(toggleRoundingMode)
         chrome.colorModeButton.target = self
         chrome.colorModeButton.action = #selector(toggleColorSwitchingMode)
+        chrome.numberBaseModeButton.target = self
+        chrome.numberBaseModeButton.action = #selector(toggleNumberBaseSwitchingMode)
         chrome.translationExitButton.target = self
         chrome.translationExitButton.action = #selector(exitTranslationMode)
         translationView.onExit = { [weak self] in self?.exitTranslationMode() }
@@ -204,6 +208,8 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         _ = view
         isRoundingEnabled = true
         colorOutputFormat = nil
+        numberBaseOutputFormat = nil
+        isNumberBaseSwitchingEnabled = true
         isColorSwitchingEnabled = true
         isTranslationMode = false
         translationSession.cancel()
@@ -241,7 +247,8 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
             return
         }
         let items = applications.map(LauncherItem.application) + SystemAction.allCases.map(LauncherItem.action) + [.translation]
-        let evaluated = Calculator.evaluate(query, timestampUnit: timestampOutputUnit, colorFormat: colorOutputFormat)
+        let evaluated = Calculator.evaluate(query, timestampUnit: timestampOutputUnit, colorFormat: colorOutputFormat,
+                                            numberBaseFormat: numberBaseOutputFormat)
         if case .numeric(let previous) = calculation, case .numeric(let current) = evaluated,
            previous.expression == current.expression, previous.value == current.value {
             calculation = .numeric(previous)
@@ -260,6 +267,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         if let calculation { calculatorView.configure(calculation) }
         chrome.setCalculatorMode(calculation != nil, isColor: colorConversion != nil, isTranslation: isTranslationMode)
         chrome.setColorFormatSwitching(colorConversion?.format, isEnabled: isColorSwitchingEnabled)
+        chrome.setNumberBaseSwitching(numberBaseConversion?.format, isEnabled: isNumberBaseSwitchingEnabled)
         chrome.updatePrecision(calculation?.decimalPlaceCount, isRounding: isRoundingEnabled)
         chrome.setTimestampUnitSwitching(canSwitchTimestampUnit ? timestampOutputUnit : nil)
         chrome.openButton.isEnabled = (calculation != nil || !results.isEmpty) && !isOpening
@@ -338,12 +346,18 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     private func conversionActionTitle(row: Int) -> String {
         if isTranslationMode { return translationActionTitle }
         if colorConversion != nil { return "Copy Color" }
+        if numberBaseConversion != nil { return "Copy Number" }
         return calculation != nil ? "Copy Answer" : selectedActionTitle(row: row)
     }
 
     private var colorConversion: ColorConversion? {
         guard case .color(let color) = calculation else { return nil }
         return color
+    }
+
+    private var numberBaseConversion: NumberBaseConversion? {
+        guard case .numberBase(let number) = calculation else { return nil }
+        return number
     }
 
     @objc private func openClickedApplication() {
@@ -517,6 +531,8 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
         if handleTranslationCommand(commandSelector) { return true }
+        if handleNumberBaseModeCommand(commandSelector) { return true }
+        if handleNumberBaseFormatCommand(commandSelector) { return true }
         if handleColorModeCommand(commandSelector) { return true }
         if handleColorFormatCommand(commandSelector) { return true }
         if handleTimestampUnitCommand(commandSelector) { return true }
@@ -552,6 +568,50 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     private var selectedItem: LauncherItem? {
         let row = tableView.selectedRow
         return results.indices.contains(row) ? results[row] : nil
+    }
+
+    private func handleNumberBaseModeCommand(_ selector: Selector) -> Bool {
+        let modes: [Selector: Bool] = [
+            #selector(NSResponder.moveUp(_:)): false, #selector(NSResponder.moveDown(_:)): true
+        ]
+        guard let enabled = modes[selector], numberBaseConversion != nil, !isPresentingDialog, !isOpening,
+              NSApp.currentEvent?.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty != false else {
+            return false
+        }
+        chrome.performAfterKeyRelease(enabled ? .downArrow : .upArrow) { [weak self] in
+            guard self?.numberBaseConversion != nil else { return }
+            self?.setNumberBaseSwitchingEnabled(enabled)
+        }
+        return true
+    }
+
+    @objc private func toggleNumberBaseSwitchingMode() {
+        guard numberBaseConversion != nil, !isPresentingDialog, !isOpening else { return }
+        setNumberBaseSwitchingEnabled(!isNumberBaseSwitchingEnabled)
+    }
+
+    private func setNumberBaseSwitchingEnabled(_ enabled: Bool) {
+        isNumberBaseSwitchingEnabled = enabled
+        chrome.setNumberBaseSwitching(numberBaseConversion?.format, isEnabled: enabled)
+        if chrome.searchField.currentEditor() == nil { view.window?.makeFirstResponder(chrome.searchField) }
+    }
+
+    private func handleNumberBaseFormatCommand(_ selector: Selector) -> Bool {
+        let offsets: [Selector: Int] = [
+            #selector(NSResponder.moveLeft(_:)): -1, #selector(NSResponder.moveBackward(_:)): -1,
+            #selector(NSResponder.moveRight(_:)): 1, #selector(NSResponder.moveForward(_:)): 1
+        ]
+        guard let offset = offsets[selector], numberBaseConversion != nil, isNumberBaseSwitchingEnabled,
+              !isPresentingDialog, !isOpening,
+              NSApp.currentEvent?.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty != false else {
+            return false
+        }
+        chrome.performAfterKeyRelease(offset < 0 ? .leftArrow : .rightArrow) { [weak self] in
+            guard let self, let number = self.numberBaseConversion, self.isNumberBaseSwitchingEnabled else { return }
+            self.numberBaseOutputFormat = number.format.shifted(by: offset)
+            self.applyQuery()
+        }
+        return true
     }
 
     private func handleColorModeCommand(_ selector: Selector) -> Bool {
