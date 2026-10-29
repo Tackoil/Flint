@@ -45,7 +45,6 @@ final class LauncherWindowController: NSWindowController, NSWindowDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(selectABCInputSource),
                                                name: NSApplication.didBecomeActiveNotification, object: NSApp)
         applicationsController.onDismiss = { [weak self] in self?.hideLauncher() }
-        applicationsController.onPresent = { [weak self] in self?.setPresented(true) }
         applicationsController.onSearchExpansionChange = { [weak self] in self?.setSearchExpanded($0) }
     }
 

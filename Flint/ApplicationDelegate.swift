@@ -1,7 +1,8 @@
 import AppKit
+import UserNotifications
 
 @MainActor
-final class ApplicationDelegate: NSObject, NSApplicationDelegate {
+final class ApplicationDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     private var launcher: LauncherWindowController?
     private var statusItem: NSStatusItem?
     private var hotKey: LauncherHotKey?
@@ -10,6 +11,7 @@ final class ApplicationDelegate: NSObject, NSApplicationDelegate {
     private var showLauncherItem: NSMenuItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        UNUserNotificationCenter.current().delegate = self
         installMainMenu()
         let keepsOpenOnFocusLoss = ProcessInfo.processInfo.arguments.contains("--keep-open")
         launcher = LauncherWindowController(preferences: preferences, keepsOpenOnFocusLoss: keepsOpenOnFocusLoss)
@@ -28,6 +30,12 @@ final class ApplicationDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         showLauncher()
         return true
+    }
+
+    nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter,
+                                            willPresent notification: UNNotification,
+                                            withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        completionHandler([.banner, .list, .sound])
     }
 
     private func installMainMenu() {

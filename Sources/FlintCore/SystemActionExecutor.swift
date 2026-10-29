@@ -4,7 +4,7 @@ import AppKit
 struct SystemActionExecutor {
     var listVolumes: @MainActor () throws -> [URL] = ejectableVolumes
     var ejectVolume: @MainActor (URL) async throws -> Void = eject
-    var emptyTrash: @MainActor () async throws -> Void = emptyFinderTrash
+    var emptyTrash: @MainActor () async throws -> Void = { try await emptyFinderTrash() }
     var showDesktop: @MainActor () async throws -> Void = revealDesktop
 
     func perform(_ action: SystemAction) async throws {
@@ -57,16 +57,40 @@ struct SystemActionExecutor {
         }.value
     }
 
-    private static func emptyFinderTrash() async throws {
+    static func emptyFinderTrash(runScript: @MainActor (String) async throws -> Void = runAppleScript) async throws {
         do {
-            try await runProcess(at: URL(fileURLWithPath: "/usr/bin/osascript"), arguments: [
-                "-e", "tell application id \"com.apple.finder\" to empty trash"
-            ])
+            try await runScript(confirmedEmptyTrashScript)
         } catch {
-            guard error.localizedDescription.contains("-1743") else { throw error }
+            let message = error.localizedDescription
+            // osascript ends its diagnostic with the numeric AppleScript error code.
+            guard message.hasSuffix("(-1743)") else { throw error }
             throw ActionError(message: "Allow Flint to control Finder in System Settings → Privacy & Security → Automation, then try again.")
         }
     }
+
+    // The launcher has already confirmed deletion. Avoid a second, potentially
+    // background Finder warning, and restore the user's preference on every path.
+    static let confirmedEmptyTrashScript = """
+    tell application id "com.apple.finder"
+        if (count of items of trash) is 0 then return
+        set originalWarning to warns before emptying of trash
+        try
+            set warns before emptying of trash to false
+            with timeout of 3600 seconds
+                empty trash
+            end timeout
+        on error failureMessage number failureNumber
+            set warns before emptying of trash to originalWarning
+            error failureMessage number failureNumber
+        end try
+        set warns before emptying of trash to originalWarning
+        repeat 300 times
+            if (count of items of trash) is 0 then return
+            delay 0.1
+        end repeat
+        error "Finder hasn’t finished emptying the Trash. Check the Trash in Finder before trying again."
+    end tell
+    """
 
     private static func revealDesktop() async throws {
         guard let application = NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.apple.exposelauncher") else {
@@ -80,12 +104,12 @@ struct SystemActionExecutor {
         _ = try await NSWorkspace.shared.openApplication(at: application, configuration: configuration)
     }
 
-    private static func runProcess(at executable: URL, arguments: [String]) async throws {
+    static func runAppleScript(_ script: String) async throws {
         try await Task.detached(priority: .userInitiated) {
             let process = Process()
             let errors = Pipe()
-            process.executableURL = executable
-            process.arguments = arguments
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/osascript")
+            process.arguments = ["-e", script]
             process.standardOutput = FileHandle.nullDevice
             process.standardError = errors
             try process.run()

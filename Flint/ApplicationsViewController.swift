@@ -24,7 +24,6 @@ private final class LauncherResultsScrollView: NSScrollView {
 @MainActor
 final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     var onDismiss: (() -> Void)?
-    var onPresent: (() -> Void)?
     var onShowSettings: (() -> Void)?
     var onSearchExpansionChange: ((Bool) -> Void)?
     private let chrome = LauncherHeaderFooter()
@@ -37,6 +36,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     private var applications: [ApplicationRecord] = []
     private var results: [LauncherItem] = []
     private let actionExecutor = SystemActionExecutor()
+    private let errorNotifier = LauncherErrorNotifier()
     private var isLoading = false
     private var isOpening = false
     private var isSearchExpanded = false
@@ -274,22 +274,15 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         isOpening = false
         chrome.openButton.isEnabled = !results.isEmpty
         guard let error else { return }
-        showError(title: "Couldn’t run \(action.name)", error: error)
+        Task { await errorNotifier.notifyFailure(for: action, error: error) }
     }
 
     private func finishOpening(_ app: ApplicationRecord, error: Error?) {
         isOpening = false
         chrome.openButton.isEnabled = !results.isEmpty
-        guard let error else {
-            onDismiss?()
-            return
-        }
-        showError(title: "Couldn’t open \(app.name)", error: error)
-    }
-
-    private func showError(title: String, error: Error) {
-        onPresent?()
-        presentDialog(title: title, message: error.localizedDescription, buttonTitles: ["OK"]) { _ in }
+        onDismiss?()
+        guard let error else { return }
+        Task { await errorNotifier.notifyLaunchFailure(for: app, error: error) }
     }
 
     private func presentDialog(title: String, message: String, buttonTitles: [String],
