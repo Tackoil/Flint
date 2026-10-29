@@ -118,7 +118,7 @@ func checkTimestampIntegration() {
     precondition(!hint.isHidden)
     controller.copyCalculationAnswer(to: pasteboard)
     precondition(pasteboard.string(forType: .string) == "1710513000")
-    checkTimestampUnitPicker(controller, search: search, pasteboard: pasteboard)
+    checkTimestampUnitLabel(controller, search: search, pasteboard: pasteboard)
     controller.resetSearch()
     precondition(controller.displayMode == .collapsed && result.isHidden && !copy.isEnabled)
     print("PASS: timestamps convert in seconds and milliseconds, with unit selection, exact copying, and local hints under Zulu")
@@ -145,29 +145,84 @@ private func checkReverseTimestamp(_ controller: ApplicationsViewController, sea
 }
 
 @MainActor
-private func checkTimestampUnitPicker(_ controller: ApplicationsViewController, search: NSTextField,
+private func checkTimestampUnitLabel(_ controller: ApplicationsViewController, search: NSTextField,
                                       pasteboard: NSPasteboard) {
     search.stringValue = "2024-03-15T14:30:00.123456789Z"
     controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
     let views = calculatorDescendants(of: controller.view)
-    let picker = views.compactMap { $0 as? NSSegmentedControl }.first!
-    precondition(!picker.isHidden && picker.selectedSegment == 0)
-    picker.selectedSegment = 1
-    precondition(NSApp.sendAction(picker.action!, to: picker.target, from: picker))
+    let unit = views.compactMap { $0 as? NSTextField }.first { !$0.isHidden && $0.stringValue == "Unix seconds" }!
+    precondition(!unit.isHidden && !unit.isEditable)
+    precondition(!views.contains { $0 is NSSegmentedControl })
+    let editor = NSTextView()
+    precondition(controller.control(search, textView: editor, doCommandBy: #selector(NSResponder.moveRight(_:))))
+    precondition(unit.stringValue == "Unix milliseconds")
     controller.view.layoutSubtreeIfNeeded()
     controller.copyCalculationAnswer(to: pasteboard)
     precondition(pasteboard.string(forType: .string) == "1710513000123")
     let labels = calculatorDescendants(of: controller.view).compactMap { $0 as? NSTextField }
     precondition(labels.contains { $0.stringValue == "1710513000123" && !$0.isHidden })
-    picker.selectedSegment = 0
-    precondition(NSApp.sendAction(picker.action!, to: picker.target, from: picker))
+    precondition(controller.control(search, textView: editor, doCommandBy: #selector(NSResponder.moveLeft(_:))))
+    precondition(unit.stringValue == "Unix seconds")
     controller.copyCalculationAnswer(to: pasteboard)
     precondition(pasteboard.string(forType: .string) == "1710513000")
     search.stringValue = "2+2"
     controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
-    precondition(picker.isHidden)
+    precondition(unit.isHidden)
     controller.copyCalculationAnswer(to: pasteboard)
     precondition(pasteboard.string(forType: .string) == "4")
+}
+
+@MainActor
+func checkTimestampKeyboardSwitching() {
+    let controller = ApplicationsViewController()
+    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
+                          styleMask: [.borderless], backing: .buffered, defer: false)
+    window.contentViewController = controller
+    let search = calculatorDescendants(of: controller.view).compactMap { $0 as? NSTextField }.first { $0.isEditable }!
+    let query = "2024-03-15T14:30:00.123Z"
+    search.stringValue = query
+    controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
+    let views = calculatorDescendants(of: controller.view)
+    let hint = views.compactMap { $0 as? KeyboardHintView }.first { $0.label == "ms" }!
+    let unit = views.compactMap { $0 as? NSTextField }.first { !$0.isHidden && $0.stringValue == "Unix seconds" }!
+    precondition(!hint.isHiddenOrHasHiddenAncestor && !unit.isHidden && hint.hint == .rightArrow)
+    let pasteboard = NSPasteboard.withUniqueName()
+    defer { pasteboard.releaseGlobally() }
+    let editor = NSTextView()
+    let steps: [(Selector, String, String)] = [
+        (#selector(NSResponder.moveRight(_:)), "Unix milliseconds", "1710513000123"),
+        (#selector(NSResponder.moveRight(_:)), "Unix milliseconds", "1710513000123"),
+        (#selector(NSResponder.moveLeft(_:)), "Unix seconds", "1710513000"),
+        (#selector(NSResponder.moveBackward(_:)), "Unix seconds", "1710513000"),
+        (#selector(NSResponder.moveForward(_:)), "Unix milliseconds", "1710513000123")
+    ]
+    for (selector, title, expected) in steps {
+        precondition(controller.control(search, textView: editor, doCommandBy: selector))
+        precondition(unit.stringValue == title && search.stringValue == query)
+        let showsSeconds = title == "Unix seconds"
+        precondition(hint.label == (showsSeconds ? "ms" : "s"))
+        precondition(hint.hint == (showsSeconds ? .rightArrow : .leftArrow))
+        controller.copyCalculationAnswer(to: pasteboard)
+        precondition(pasteboard.string(forType: .string) == expected)
+    }
+    for selector in [#selector(NSResponder.moveWordLeft(_:)), #selector(NSResponder.moveRightAndModifySelection(_:))] {
+        precondition(!controller.control(search, textView: editor, doCommandBy: selector))
+        precondition(unit.stringValue == "Unix milliseconds")
+    }
+    for input in ["Finder", "1710513000", "1710513000123", "2024-02-30T00:00:00Z", ""] {
+        search.stringValue = input
+        controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
+        precondition(hint.isHiddenOrHasHiddenAncestor)
+        precondition(!controller.control(search, textView: editor, doCommandBy: #selector(NSResponder.moveLeft(_:))))
+        precondition(!controller.control(search, textView: editor, doCommandBy: #selector(NSResponder.moveRight(_:))))
+    }
+    search.stringValue = "123.456+0"
+    controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
+    precondition(hint.isHiddenOrHasHiddenAncestor)
+    precondition(controller.control(search, textView: editor, doCommandBy: #selector(NSResponder.moveLeft(_:))))
+    controller.copyCalculationAnswer(to: pasteboard)
+    precondition(pasteboard.string(forType: .string) == "123.46")
+    print("PASS: Left selects seconds, Right selects milliseconds, copy follows the unit, and other modes retain their arrow behavior")
 }
 
 @MainActor

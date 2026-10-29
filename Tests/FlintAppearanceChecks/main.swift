@@ -63,6 +63,7 @@ struct AppearanceChecks {
         checkNumericRoundingIntegration()
         checkRoundingModeSwitches()
         checkTimestampIntegration()
+        checkTimestampKeyboardSwitching()
         checkCalculatorToSearchTransitions()
     }
 }

@@ -48,15 +48,15 @@ func checkNumericRoundingIntegration() {
     controller.copyCalculationAnswer(to: pasteboard)
     precondition(pasteboard.string(forType: .string) == "12345")
     checkFractionalDigitControls(controller, search: search, editor: editor, answer: answer, pasteboard: pasteboard)
-    for query in ["Finder", "2024-03-15T14:30:00Z"] {
+    for query in ["Finder", "1710513000"] {
         search.stringValue = query
         controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
         precondition(!controller.control(search, textView: editor, doCommandBy: #selector(NSResponder.moveLeft(_:))))
         precondition(!controller.control(search, textView: editor, doCommandBy: #selector(NSResponder.moveRight(_:))))
     }
     controller.copyCalculationAnswer(to: pasteboard)
-    precondition(pasteboard.string(forType: .string) == "1710513000")
-    print("PASS: decimal-place controls, continuation markers, clean copying, and timestamp/search cursor movement")
+    precondition(pasteboard.string(forType: .string) == "2024-03-15T14:30:00Z")
+    print("PASS: decimal-place controls, continuation markers, clean copying, and Unix input/search cursor movement")
 }
 
 @MainActor

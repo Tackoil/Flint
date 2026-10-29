@@ -142,6 +142,7 @@ final class LauncherHeaderFooter {
     private let precisionLabel = Appearance.label("", size: 12, color: .labelColor)
     private let precisionKeys = Appearance.stack([KeyboardHintView(.leftArrow), KeyboardHintView(.rightArrow)], spacing: 4)
     private lazy var precisionControls = Appearance.stack([precisionLabel, precisionKeys], spacing: 4)
+    private let timestampUnitHint = KeyboardHintView(.rightArrow, label: "ms")
 
     func searchBar() -> NSView {
         NSLayoutConstraint.activate([
@@ -185,8 +186,9 @@ final class LauncherHeaderFooter {
         navigation.setAccessibilityLabel("Use the Up and Down arrow keys to navigate")
         precisionControls.isHidden = true
         roundingModeButton.isHidden = true
+        timestampUnitHint.isHidden = true
         let actions = Appearance.actionGroup(content: Appearance.stack(
-            [openButton, navigation, precisionControls, roundingModeButton], spacing: 16))
+            [openButton, navigation, precisionControls, roundingModeButton, timestampUnitHint], spacing: 16))
         settingsButton.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: "Settings")?
             .withSymbolConfiguration(.init(pointSize: 14, weight: .regular))
         settingsButton.imagePosition = .imageOnly
@@ -234,6 +236,19 @@ final class LauncherHeaderFooter {
     }
 
     var isReturnKeyPressed: Bool { (openButton as? LauncherOpenButton)?.isReturnKeyPressed == true }
+
+    func setTimestampUnitSwitching(_ unit: TimestampCalculation.Unit?) {
+        timestampUnitHint.isHidden = unit == nil
+        guard let unit else { return }
+        let hint: KeyboardHint = unit == .seconds ? .rightArrow : .leftArrow
+        let label = unit == .seconds ? "ms" : "s"
+        if timestampUnitHint.hint != hint { timestampUnitHint.hint = hint }
+        if timestampUnitHint.label != label { timestampUnitHint.label = label }
+        let destination = unit == .seconds ? "milliseconds" : "seconds"
+        let help = "Switch to \(destination) (\(hint.name)). Modified arrow keys edit the input."
+        timestampUnitHint.setAccessibilityLabel(help)
+        timestampUnitHint.toolTip = help
+    }
 
     private func inset(_ content: NSView, horizontal: CGFloat, height: CGFloat) -> NSView {
         let container = LauncherFooterView()

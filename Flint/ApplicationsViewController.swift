@@ -70,12 +70,6 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         chrome.settingsButton.action = #selector(showSettings)
         chrome.roundingModeButton.target = self
         chrome.roundingModeButton.action = #selector(toggleRoundingMode)
-        calculatorView.onTimestampUnitChange = { [weak self] unit in
-            guard let self else { return }
-            self.timestampOutputUnit = unit
-            self.applyQuery()
-            self.view.window?.makeFirstResponder(self.chrome.searchField)
-        }
         refreshApplications()
     }
 
@@ -205,6 +199,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         if let calculation { calculatorView.configure(calculation) }
         chrome.setCalculatorMode(calculation != nil)
         chrome.updatePrecision(calculation?.decimalPlaceCount, isRounding: isRoundingEnabled)
+        chrome.setTimestampUnitSwitching(canSwitchTimestampUnit ? timestampOutputUnit : nil)
         chrome.openButton.isEnabled = (calculation != nil || !results.isEmpty) && !isOpening
         updateEmptyState(hasQuery: isExpanded)
         tableView.reloadData()
@@ -404,6 +399,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     @objc private func showSettings() { onShowSettings?() }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        if handleTimestampUnitCommand(commandSelector) { return true }
         if handleRoundingModeCommand(commandSelector) { return true }
         if handlePrecisionCommand(commandSelector) { return true }
         let actions: [Selector: () -> Void] = [
@@ -417,6 +413,31 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         guard let action = actions[commandSelector] else { return false }
         action()
         return true
+    }
+
+    private var canSwitchTimestampUnit: Bool {
+        guard case .timestamp(let timestamp) = calculation else { return false }
+        return timestamp.direction == .zuluToUnix
+    }
+
+    private func handleTimestampUnitCommand(_ selector: Selector) -> Bool {
+        let units: [Selector: TimestampCalculation.Unit] = [
+            #selector(NSResponder.moveLeft(_:)): .seconds, #selector(NSResponder.moveBackward(_:)): .seconds,
+            #selector(NSResponder.moveRight(_:)): .milliseconds, #selector(NSResponder.moveForward(_:)): .milliseconds
+        ]
+        guard let unit = units[selector], canSwitchTimestampUnit, !isPresentingDialog, !isOpening,
+              NSApp.currentEvent?.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty != false else {
+            return false
+        }
+        setTimestampOutputUnit(unit)
+        return true
+    }
+
+    private func setTimestampOutputUnit(_ unit: TimestampCalculation.Unit) {
+        guard timestampOutputUnit != unit else { return }
+        timestampOutputUnit = unit
+        applyQuery()
+        if chrome.searchField.currentEditor() == nil { view.window?.makeFirstResponder(chrome.searchField) }
     }
 
     private func handlePrecisionCommand(_ selector: Selector) -> Bool {
