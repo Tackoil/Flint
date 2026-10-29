@@ -8,7 +8,14 @@ trap 'rm -rf "$appearance_check_dir"' EXIT
 xcrun swiftc -swift-version 5 -parse-as-library \
     -module-cache-path "${CLANG_MODULE_CACHE_PATH:-$appearance_check_dir/module-cache}" \
     "$project_dir/Flint/Appearance.swift" \
+    "$project_dir/Flint/KeyboardHint.swift" \
     "$project_dir/Flint/LauncherHeaderFooter.swift" \
+    "$project_dir/Flint/LauncherDialog.swift" \
+    "$project_dir/Flint/ApplicationRow.swift" \
+    "$project_dir/Sources/FlintCore/ApplicationRecord.swift" \
+    "$project_dir/Sources/FlintCore/LauncherItem.swift" \
+    "$project_dir/Sources/FlintCore/SystemAction.swift" \
+    "$project_dir/Tests/FlintAppearanceChecks/LauncherDialogChecks.swift" \
     "$project_dir/Tests/FlintAppearanceChecks/main.swift" \
     -o "$appearance_check_dir/check"
 "$appearance_check_dir/check"

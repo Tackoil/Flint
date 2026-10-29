@@ -10,6 +10,7 @@ enum LauncherLayout {
     static var footerHeight: CGFloat { cornerRadius * 2 }
     static let resultRowHeight: CGFloat = 40
     static let applicationIconSize: CGFloat = 28
+    static let actionIconSize: CGFloat = 18
     static let rowSpacing: CGFloat = 16
     static var rowHorizontalInset: CGFloat { iconCenterX - applicationIconSize / 2 }
     static var iconCenterX: CGFloat { cornerRadius }
@@ -181,22 +182,6 @@ enum Appearance {
         stack.alignment = .centerY
         stack.spacing = spacing
         return stack
-    }
-
-    static func keycap(_ text: String) -> NSView {
-        let view = AppearanceSurfaceView(fillColor: .clear, borderColor: .separatorColor)
-        view.layer?.borderWidth = 0.75
-        view.layer?.cornerRadius = 5
-        let text = label(text, size: 11, weight: .medium, color: .secondaryLabelColor)
-        text.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(text)
-        NSLayoutConstraint.activate([
-            view.widthAnchor.constraint(equalToConstant: 18),
-            view.heightAnchor.constraint(equalToConstant: 18),
-            text.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            text.centerYAnchor.constraint(equalTo: view.centerYAnchor)
-        ])
-        return view
     }
 
     static func actionGroup(content: NSView) -> NSView {

@@ -35,10 +35,13 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     private let statusLabel = Appearance.label("Finding your applications…", size: 14)
     private let iconCache = NSCache<NSString, NSImage>()
     private var applications: [ApplicationRecord] = []
-    private var results: [ApplicationRecord] = []
+    private var results: [LauncherItem] = []
+    private let actionExecutor = SystemActionExecutor()
     private var isLoading = false
     private var isOpening = false
     private var isSearchExpanded = false
+    private var dialog: LauncherDialogView?
+    var isPresentingDialog: Bool { dialog != nil }
 
     override func loadView() {
         view = Appearance.launcherSurface(content: launcherContent)
@@ -73,7 +76,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         tableView.dataSource = self
         tableView.target = self
         tableView.action = #selector(openClickedApplication)
-        tableView.setAccessibilityLabel("Applications")
+        tableView.setAccessibilityLabel("Applications and actions")
         scrollView.documentView = tableView
         scrollView.drawsBackground = false
         scrollView.hasVerticalScroller = true
@@ -157,7 +160,8 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     private func applyQuery() {
         let query = chrome.searchField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         let isExpanded = !query.isEmpty
-        results = isExpanded ? ApplicationSearch.filter(applications, query: query) : []
+        let items = applications.map(LauncherItem.application) + SystemAction.allCases.map(LauncherItem.action)
+        results = isExpanded ? ApplicationSearch.filter(items, query: query) : []
         chrome.openButton.isEnabled = !results.isEmpty && !isOpening
         updateEmptyState(hasQuery: isExpanded)
         tableView.reloadData()
@@ -167,7 +171,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         }
         updateSelection()
         updateResultsVisibility(isExpanded)
-        onSearchExpansionChange?(isExpanded)
+        onSearchExpansionChange?(isExpanded || isPresentingDialog)
     }
 
     private func updateResultsVisibility(_ isExpanded: Bool) {
@@ -191,15 +195,14 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         statusLabel.isHidden = !results.isEmpty || !hasQuery
         if isLoading {
             statusLabel.stringValue = "Finding your applications…"
-        } else if applications.isEmpty {
-            statusLabel.stringValue = "No applications available\nInstall an app in Applications, then refresh."
         } else {
-            statusLabel.stringValue = "No applications found\nTry a different name."
+            statusLabel.stringValue = "No applications or actions found\nTry a different name."
         }
     }
 
     private func updateSelection() {
         let row = tableView.selectedRow
+        chrome.updateActionTitle(results.indices.contains(row) ? results[row].buttonTitle : "Open")
         let visible = tableView.rows(in: tableView.visibleRect)
         guard visible.location != NSNotFound else { return }
         for index in visible.location..<NSMaxRange(visible) {
@@ -215,8 +218,17 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
 
     @objc private func openSelectedApplication() {
         let row = tableView.selectedRow
-        guard !isOpening, results.indices.contains(row) else { return }
-        let app = results[row]
+        guard !isOpening, !isPresentingDialog, results.indices.contains(row) else { return }
+        let item = results[row]
+        switch item {
+        case .application(let app):
+            openApplication(app)
+        case .action(let action):
+            runAction(action)
+        }
+    }
+
+    private func openApplication(_ app: ApplicationRecord) {
         isOpening = true
         chrome.openButton.isEnabled = false
         let configuration = NSWorkspace.OpenConfiguration()
@@ -226,6 +238,45 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         }
     }
 
+    private func runAction(_ action: SystemAction) {
+        guard action.requiresConfirmation else {
+            performAction(action)
+            return
+        }
+        isOpening = true
+        chrome.openButton.isEnabled = false
+        presentDialog(title: "Empty Trash?",
+                      message: "Items in the Trash will be permanently deleted. You can’t undo this action.",
+                      buttonTitles: ["Cancel", "Empty Trash"]) { [weak self] response in
+            guard let self else { return }
+            self.isOpening = false
+            self.chrome.openButton.isEnabled = !self.results.isEmpty
+            if response == 1 { self.performAction(action) }
+        }
+    }
+
+    private func performAction(_ action: SystemAction) {
+        isOpening = true
+        chrome.openButton.isEnabled = false
+        onDismiss?()
+        Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await self.actionExecutor.perform(action)
+                self.finishAction(action, error: nil)
+            } catch {
+                self.finishAction(action, error: error)
+            }
+        }
+    }
+
+    private func finishAction(_ action: SystemAction, error: Error?) {
+        isOpening = false
+        chrome.openButton.isEnabled = !results.isEmpty
+        guard let error else { return }
+        showError(title: "Couldn’t run \(action.name)", error: error)
+    }
+
     private func finishOpening(_ app: ApplicationRecord, error: Error?) {
         isOpening = false
         chrome.openButton.isEnabled = !results.isEmpty
@@ -233,13 +284,35 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
             onDismiss?()
             return
         }
-        guard let window = view.window else { return }
+        showError(title: "Couldn’t open \(app.name)", error: error)
+    }
+
+    private func showError(title: String, error: Error) {
         onPresent?()
-        let alert = NSAlert()
-        alert.messageText = "Couldn’t open \(app.name)"
-        alert.informativeText = error.localizedDescription
-        alert.addButton(withTitle: "OK")
-        alert.beginSheetModal(for: window)
+        presentDialog(title: title, message: error.localizedDescription, buttonTitles: ["OK"]) { _ in }
+    }
+
+    private func presentDialog(title: String, message: String, buttonTitles: [String],
+                               onResponse: @escaping (Int) -> Void) {
+        guard dialog == nil else { return }
+        onSearchExpansionChange?(true)
+        let overlay = LauncherDialogView(title: title, message: message, buttonTitles: buttonTitles) { [weak self] response in
+            guard let self else { return }
+            self.dialog = nil
+            self.launcherContent.setAccessibilityHidden(false)
+            self.view.window?.makeFirstResponder(self.chrome.searchField)
+            self.onSearchExpansionChange?(self.isSearchExpanded)
+            onResponse(response)
+        }
+        dialog = overlay
+        launcherContent.setAccessibilityHidden(true)
+        overlay.frame = view.bounds
+        overlay.autoresizingMask = [.width, .height]
+        view.addSubview(overlay)
+    }
+
+    func cancelDialog() {
+        dialog?.cancelOperation(self)
     }
 
     @objc private func dismissLauncher() { onDismiss?() }
@@ -249,7 +322,9 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         let actions: [Selector: () -> Void] = [
             #selector(NSResponder.moveDown(_:)): { self.moveSelection(by: 1) },
             #selector(NSResponder.moveUp(_:)): { self.moveSelection(by: -1) },
-            #selector(NSResponder.insertNewline(_:)): openSelectedApplication,
+            #selector(NSResponder.insertNewline(_:)): {
+                if !self.chrome.isReturnKeyPressed { self.openSelectedApplication() }
+            },
             #selector(NSResponder.cancelOperation(_:)): dismissLauncher
         ]
         guard let action = actions[commandSelector] else { return false }
@@ -274,18 +349,24 @@ extension ApplicationsViewController: NSTableViewDataSource, NSTableViewDelegate
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let cell = tableView.makeView(withIdentifier: ApplicationRowContent.identifier, owner: self) as? ApplicationRowContent
             ?? ApplicationRowContent(frame: .zero)
-        let app = results[row]
-        cell.configure(application: app, icon: icon(for: app), selected: row == tableView.selectedRow)
+        let item = results[row]
+        cell.configure(item: item, icon: icon(for: item), selected: row == tableView.selectedRow)
         return cell
     }
 
     func tableViewSelectionDidChange(_ notification: Notification) { updateSelection() }
 
-    private func icon(for app: ApplicationRecord) -> NSImage {
-        if let image = iconCache.object(forKey: app.id as NSString) { return image }
-        let image = NSWorkspace.shared.icon(forFile: app.url.path)
+    private func icon(for item: LauncherItem) -> NSImage {
+        if let image = iconCache.object(forKey: item.id as NSString) { return image }
+        let image: NSImage
+        switch item {
+        case .application(let app):
+            image = NSWorkspace.shared.icon(forFile: app.url.path)
+        case .action(let action):
+            image = NSImage(systemSymbolName: action.symbolName, accessibilityDescription: action.name) ?? NSImage()
+        }
         image.size = NSSize(width: 64, height: 64)
-        iconCache.setObject(image, forKey: app.id as NSString)
+        iconCache.setObject(image, forKey: item.id as NSString)
         return image
     }
 }

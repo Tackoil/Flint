@@ -2,16 +2,27 @@ import Foundation
 
 enum ApplicationSearch {
     static func filter(_ applications: [ApplicationRecord], query: String) -> [ApplicationRecord] {
+        ranked(applications, query: query, name: \.name)
+    }
+
+    static func filter(_ items: [LauncherItem], query: String) -> [LauncherItem] {
+        ranked(items, query: query, name: \.name)
+    }
+
+    private static func ranked<Item>(_ items: [Item], query: String, name: (Item) -> String) -> [Item] {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
             .folding(options: [.diacriticInsensitive, .caseInsensitive, .widthInsensitive], locale: .current)
-        guard !query.isEmpty else { return applications }
+        guard !query.isEmpty else { return items }
 
-        return applications.compactMap { application -> (ApplicationRecord, Int)? in
-            guard let score = score(name: application.searchableName, query: query) else { return nil }
-            return (application, score)
+        return items.compactMap { item -> (Item, Int)? in
+            let searchableName = name(item).folding(
+                options: [.diacriticInsensitive, .caseInsensitive, .widthInsensitive], locale: .current
+            )
+            guard let score = score(name: searchableName, query: query) else { return nil }
+            return (item, score)
         }.sorted { lhs, rhs in
             if lhs.1 != rhs.1 { return lhs.1 < rhs.1 }
-            return lhs.0.name.localizedStandardCompare(rhs.0.name) == .orderedAscending
+            return name(lhs.0).localizedStandardCompare(name(rhs.0)) == .orderedAscending
         }.map(\.0)
     }
 

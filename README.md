@@ -10,7 +10,7 @@ The launcher fades in when shown and fades out when dismissed, including with Es
 
 ## Run
 
-Open `Flint.xcodeproj`, select the **Flint** scheme, and run on **My Mac**. Signing is disabled for local development.
+Open `Flint.xcodeproj`, select the **Flint** scheme, and run on **My Mac**. Local builds use ad hoc signing with the Apple Events entitlement for the Empty Trash action.
 
 Or build and open from the terminal:
 
@@ -36,12 +36,20 @@ The launcher opens as a compact search bar. Type to expand the application resul
 | Shortcut | Action |
 | --- | --- |
 | Command–Space | Show or hide Flint |
-| Up / Down | Select the previous / next app |
-| Return | Open the selected app |
+| Up / Down | Select the previous / next result |
+| Return | Open the selected app or run the selected action |
 | Escape | Hide Flint |
 | Command–R | Refresh installed applications |
 
 Flint also has a flame icon in the menu bar with **Show Flint**, **Settings…**, and **Quit Flint** actions. If another app has reserved the launcher shortcut, use the menu bar to open Flint. Clicking outside the launcher dismisses it. Nothing is configured to run at login.
+
+## Actions
+
+Search for **Eject All Disks**, **Empty Trash**, or **Show Desktop**, then click the result or press Return. Actions appear alongside applications with an **Action** label and a **Run Action** button.
+
+**Eject All Disks** safely ejects removable or ejectable volumes, including external disks and disk images, and excludes internal volumes. It attempts every disk and reports any failures, such as a disk being in use. **Empty Trash** asks for confirmation before permanently deleting items through Finder; macOS may request permission for Flint to control Finder. **Show Desktop** uses Mission Control’s desktop mode without depending on your keyboard shortcut. Successful actions dismiss Flint.
+
+Dialogs use untinted regular Liquid Glass on macOS 26 and later, with a standard popover material on older versions, and dim only the inside of the rounded launcher. Native macOS push buttons show Escape and Return key hints: Escape cancels and Return confirms (or acknowledges an error). Keyboard hints use consistent rounded rectangle outlines and symbols in the launcher footer and dialogs. Labeled hints keep a consistent gap between the action text and the outlined key. Each key runs its labeled action directly; dialog buttons have no selection or navigation state. Closing a dialog returns focus to search. Action icons are smaller than application icons while keeping the result text aligned.
 
 ## Settings
 
@@ -61,4 +69,4 @@ sh scripts/check-appearance.sh
 cognitive --threshold 15 Sources Flint Tests
 ```
 
-This version contains the applications list, search, application launching, and shortcut settings.
+This version contains application search and launching, system actions, and shortcut settings.

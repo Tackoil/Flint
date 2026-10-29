@@ -14,6 +14,8 @@ final class ApplicationRow: NSTableRowView {
 final class ApplicationRowContent: NSTableCellView {
     static let identifier = NSUserInterfaceItemIdentifier("Application")
     private let appIcon = NSImageView()
+    private lazy var iconWidth = appIcon.widthAnchor.constraint(equalToConstant: LauncherLayout.applicationIconSize)
+    private lazy var iconHeight = appIcon.heightAnchor.constraint(equalToConstant: LauncherLayout.applicationIconSize)
     private let nameLabel = Appearance.label("", size: 15, weight: .medium, color: Appearance.text)
     private let kindLabel = Appearance.label("Application", size: 12)
 
@@ -21,10 +23,18 @@ final class ApplicationRowContent: NSTableCellView {
         super.init(frame: frameRect)
         identifier = Self.identifier
         appIcon.imageScaling = .scaleProportionallyUpOrDown
-        appIcon.widthAnchor.constraint(equalToConstant: LauncherLayout.applicationIconSize).isActive = true
-        appIcon.heightAnchor.constraint(equalToConstant: LauncherLayout.applicationIconSize).isActive = true
+        let iconSlot = NSView()
+        iconSlot.addSubview(appIcon)
+        appIcon.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            iconSlot.widthAnchor.constraint(equalToConstant: LauncherLayout.applicationIconSize),
+            iconSlot.heightAnchor.constraint(equalToConstant: LauncherLayout.applicationIconSize),
+            appIcon.centerXAnchor.constraint(equalTo: iconSlot.centerXAnchor),
+            appIcon.centerYAnchor.constraint(equalTo: iconSlot.centerYAnchor),
+            iconWidth, iconHeight
+        ])
         nameLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        let row = Appearance.stack([appIcon, nameLabel, Appearance.spacer(), kindLabel], spacing: LauncherLayout.rowSpacing)
+        let row = Appearance.stack([iconSlot, nameLabel, Appearance.spacer(), kindLabel], spacing: LauncherLayout.rowSpacing)
         row.translatesAutoresizingMaskIntoConstraints = false
         addSubview(row)
         NSLayoutConstraint.activate([
@@ -36,10 +46,19 @@ final class ApplicationRowContent: NSTableCellView {
 
     required init?(coder: NSCoder) { fatalError("Use init(frame:)") }
 
-    func configure(application: ApplicationRecord, icon: NSImage, selected: Bool) {
-        nameLabel.stringValue = application.name
+    func configure(item: LauncherItem, icon: NSImage, selected: Bool) {
+        nameLabel.stringValue = item.name
+        kindLabel.stringValue = item.kind
         appIcon.image = icon
-        setAccessibilityLabel(application.name)
+        let iconSize: CGFloat
+        if case .action = item {
+            iconSize = LauncherLayout.actionIconSize
+        } else {
+            iconSize = LauncherLayout.applicationIconSize
+        }
+        iconWidth.constant = iconSize
+        iconHeight.constant = iconSize
+        setAccessibilityLabel("\(item.name), \(item.kind)")
         updateSelection(selected)
     }
 

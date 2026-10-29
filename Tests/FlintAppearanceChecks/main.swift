@@ -56,5 +56,8 @@ struct AppearanceChecks {
         print("PASS: the reveal changes without resizing the window content or moving the search field")
         print("PASS: untinted native glass and inherited appearance")
         print("PASS: layer colors resolve for both light and dark appearances")
+        checkLauncherDialog()
+        checkKeyboardHintFeedback()
+        checkLauncherRowIcons()
     }
 }

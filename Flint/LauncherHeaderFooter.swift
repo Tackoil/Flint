@@ -13,6 +13,15 @@ private final class LauncherFooterView: NSView {
 }
 
 private final class LauncherOpenButton: NSButton {
+    private let content = KeyboardHintView(.returnKey, label: "Open Application")
+    var isReturnKeyPressed: Bool { content.isKeyPressed }
+
+    func updateTitle(_ title: String) {
+        content.label = title
+        setAccessibilityLabel(title)
+        toolTip = "\(title) (\(KeyboardHint.returnKey.name))"
+    }
+
     override var isEnabled: Bool {
         didSet { subviews.first?.alphaValue = isEnabled ? 1 : 0.4 }
     }
@@ -21,12 +30,10 @@ private final class LauncherOpenButton: NSButton {
         super.init(frame: .zero)
         title = ""
         isBordered = false
+        (cell as? NSButtonCell)?.highlightsBy = []
         setAccessibilityLabel("Open Application")
-        toolTip = "Open selected application (Return)"
-        let content = Appearance.stack([
-            Appearance.label("Open Application", size: 12, color: .labelColor),
-            Appearance.keycap("↵")
-        ], spacing: 8)
+        toolTip = "Open selected application (\(KeyboardHint.returnKey.name))"
+        content.onKeyRelease = { [weak self] in self?.performClick(nil) }
         content.translatesAutoresizingMaskIntoConstraints = false
         addSubview(content)
         NSLayoutConstraint.activate([
@@ -43,13 +50,6 @@ private final class LauncherOpenButton: NSButton {
         super.hitTest(point) == nil ? nil : self
     }
 
-    override func draw(_ dirtyRect: NSRect) {
-        if isHighlighted {
-            NSColor.labelColor.withAlphaComponent(0.06).setFill()
-            NSBezierPath(roundedRect: bounds.insetBy(dx: -5, dy: 0), xRadius: 12, yRadius: 12).fill()
-        }
-        super.draw(dirtyRect)
-    }
 }
 
 final class LauncherHeaderFooter {
@@ -67,14 +67,14 @@ final class LauncherHeaderFooter {
         let searchFont = NSFont.systemFont(ofSize: 18)
         searchField.font = searchFont
         searchField.placeholderAttributedString = NSAttributedString(
-            string: "Search applications…",
+            string: "Search applications and actions…",
             attributes: [.font: searchFont, .foregroundColor: NSColor.secondaryLabelColor]
         )
         searchField.textColor = .labelColor
         searchField.isBordered = false
         searchField.drawsBackground = false
         searchField.focusRingType = .none
-        searchField.setAccessibilityLabel("Search applications")
+        searchField.setAccessibilityLabel("Search applications and actions")
         searchField.setContentHuggingPriority(.defaultLow, for: .horizontal)
         searchField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         return searchBarLayout(icon: icon)
@@ -99,7 +99,7 @@ final class LauncherHeaderFooter {
 
     func footer() -> NSView {
         let navigation = Appearance.stack([
-            Appearance.label("Navigate", size: 12), Appearance.keycap("↑"), Appearance.keycap("↓")
+            Appearance.label("Navigate", size: 12, color: .labelColor), KeyboardHintView(.upArrow), KeyboardHintView(.downArrow)
         ], spacing: 4)
         navigation.setAccessibilityLabel("Use the Up and Down arrow keys to navigate")
         let actions = Appearance.actionGroup(content: Appearance.stack([openButton, navigation], spacing: 16))
@@ -121,6 +121,12 @@ final class LauncherHeaderFooter {
         return inset(Appearance.stack([settingsButton, Appearance.spacer(), actions], spacing: 13),
                      horizontal: LauncherLayout.floatingControlInset, height: LauncherLayout.footerHeight)
     }
+
+    func updateActionTitle(_ title: String) {
+        (openButton as? LauncherOpenButton)?.updateTitle(title)
+    }
+
+    var isReturnKeyPressed: Bool { (openButton as? LauncherOpenButton)?.isReturnKeyPressed == true }
 
     private func inset(_ content: NSView, horizontal: CGFloat, height: CGFloat) -> NSView {
         let container = LauncherFooterView()

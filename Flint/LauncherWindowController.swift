@@ -47,6 +47,10 @@ final class LauncherWindowController: NSWindowController, NSWindowDelegate {
     required init?(coder: NSCoder) { fatalError("Use init()") }
 
     func showLauncher() {
+        if applicationsController.isPresentingDialog {
+            setPresented(true)
+            return
+        }
         let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
         guard window != nil, let screen else { return }
         allowsResizeAnimation = false
@@ -60,6 +64,7 @@ final class LauncherWindowController: NSWindowController, NSWindowDelegate {
 
     func hideLauncher() {
         guard isPresented else { return }
+        applicationsController.cancelDialog()
         setPresented(false)
     }
 
@@ -108,7 +113,7 @@ final class LauncherWindowController: NSWindowController, NSWindowDelegate {
     func refreshApplications() { applicationsController.refreshApplications() }
 
     func windowDidResignKey(_ notification: Notification) {
-        guard !keepsOpenOnFocusLoss, window?.attachedSheet == nil else { return }
+        guard !keepsOpenOnFocusLoss, !applicationsController.isPresentingDialog else { return }
         hideLauncher()
     }
 }
