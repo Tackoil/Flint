@@ -4,11 +4,12 @@ private final class LauncherSearchIcon: NSView {
     private let search = Appearance.symbol("magnifyingglass", size: 16, color: .secondaryLabelColor)
     private let calculator = Appearance.symbol("plus.forwardslash.minus", size: 16, color: .secondaryLabelColor)
     private let color = Appearance.symbol("paintpalette", size: 16, color: .secondaryLabelColor)
+    private let translation = Appearance.symbol("character.bubble", size: 16, color: .secondaryLabelColor)
     private var mode = "search"
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        for icon in [search, calculator, color] {
+        for icon in [search, calculator, color, translation] {
             icon.translatesAutoresizingMaskIntoConstraints = false
             icon.wantsLayer = true
             addSubview(icon)
@@ -26,15 +27,18 @@ private final class LauncherSearchIcon: NSView {
         color.setAccessibilityLabel("Color conversion")
         color.alphaValue = 0
         color.setAccessibilityHidden(true)
+        translation.setAccessibilityLabel("Translation")
+        translation.alphaValue = 0
+        translation.setAccessibilityHidden(true)
     }
 
     required init?(coder: NSCoder) { fatalError("Use init(frame:)") }
 
-    func setCalculatorMode(_ enabled: Bool, isColor: Bool) {
-        let next = isColor ? "color" : (enabled ? "calculator" : "search")
+    func setCalculatorMode(_ enabled: Bool, isColor: Bool, isTranslation: Bool) {
+        let next = isTranslation ? "translation" : (isColor ? "color" : (enabled ? "calculator" : "search"))
         guard mode != next else { return }
         mode = next
-        let icons = [(search, "search"), (calculator, "calculator"), (color, "color")]
+        let icons = [(search, "search"), (calculator, "calculator"), (color, "color"), (translation, "translation")]
         icons.forEach { $0.0.setAccessibilityHidden($0.1 != next) }
         NSAnimationContext.runAnimationGroup { context in
             context.duration = Appearance.launcherTransitionDuration(for: window)
@@ -58,12 +62,13 @@ private final class LauncherFooterView: NSView {
 
 private final class LauncherOpenButton: NSButton {
     private let content = KeyboardHintView(.returnKey, label: "Open Application")
-    var isReturnKeyPressed: Bool { content.isKeyPressed }
+    var isReturnKeyPressed: Bool { content.hint == .returnKey && content.isKeyPressed }
 
-    func updateTitle(_ title: String) {
+    func updateTitle(_ title: String, hint: KeyboardHint) {
+        if content.hint != hint { content.hint = hint }
         content.label = title
         setAccessibilityLabel(title)
-        toolTip = "\(title) (\(KeyboardHint.returnKey.name))"
+        toolTip = "\(title) (\(hint.name))"
     }
 
     override var isEnabled: Bool {
@@ -148,6 +153,8 @@ final class LauncherHeaderFooter {
     let settingsButton = Appearance.button("")
     let roundingModeButton: NSButton = LauncherModeButton()
     let colorModeButton: NSButton = LauncherModeButton()
+    let translationExitButton: NSButton = LauncherOpenButton()
+    private var translationSearchHeight: NSLayoutConstraint?
     private let searchIcon = LauncherSearchIcon()
     private let navigation = Appearance.stack([
         Appearance.label("Navigate", size: 12, color: .labelColor), KeyboardHintView(.upArrow), KeyboardHintView(.downArrow)
@@ -170,14 +177,14 @@ final class LauncherHeaderFooter {
         let searchFont = NSFont.systemFont(ofSize: 18)
         searchField.font = searchFont
         searchField.placeholderAttributedString = NSAttributedString(
-            string: "Search applications, actions, or calculate…",
+            string: "Search apps, actions, calculate, or translate…",
             attributes: [.font: searchFont, .foregroundColor: NSColor.secondaryLabelColor]
         )
         searchField.textColor = .labelColor
         searchField.isBordered = false
         searchField.drawsBackground = false
         searchField.focusRingType = .none
-        searchField.setAccessibilityLabel("Search applications, actions, or calculate")
+        searchField.setAccessibilityLabel("Search applications, actions, calculate, or translate")
         searchField.setContentHuggingPriority(.defaultLow, for: .horizontal)
         searchField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         return searchBarLayout(icon: searchIcon)
@@ -197,6 +204,7 @@ final class LauncherHeaderFooter {
             searchField.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -LauncherLayout.contentInset),
             searchField.centerYAnchor.constraint(equalTo: bar.centerYAnchor, constant: 0.5)
         ])
+        translationSearchHeight = searchField.heightAnchor.constraint(lessThanOrEqualToConstant: 22)
         return bar
     }
 
@@ -207,8 +215,12 @@ final class LauncherHeaderFooter {
         timestampUnitHint.isHidden = true
         colorFormatControls.isHidden = true
         colorModeButton.isHidden = true
+        translationExitButton.isHidden = true
+        (translationExitButton as? LauncherOpenButton)?.updateTitle("Exit", hint: .escape)
+        translationExitButton.setAccessibilityLabel("Exit translation mode")
+        translationExitButton.toolTip = "Return to search (Escape)"
         let actions = Appearance.actionGroup(content: Appearance.stack(
-            [openButton, navigation, precisionControls, roundingModeButton, timestampUnitHint, colorFormatControls, colorModeButton], spacing: 16))
+            [openButton, translationExitButton, navigation, precisionControls, roundingModeButton, timestampUnitHint, colorFormatControls, colorModeButton], spacing: 16))
         actions.wantsLayer = true
         actionGroup = actions as? ActionGroupView
         settingsButton.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: "Settings")?
@@ -232,17 +244,25 @@ final class LauncherHeaderFooter {
                      horizontal: LauncherLayout.floatingControlInset, height: LauncherLayout.footerHeight)
     }
 
-    func updateActionTitle(_ title: String) {
+    func updateActionTitle(_ title: String, hint: KeyboardHint = .returnKey) {
         animateActionLayout {
-            (openButton as? LauncherOpenButton)?.updateTitle(title)
+            (openButton as? LauncherOpenButton)?.updateTitle(title, hint: hint)
         }
     }
 
-    func setCalculatorMode(_ isCalculator: Bool, isColor: Bool = false) {
+    func setCalculatorMode(_ isCalculator: Bool, isColor: Bool = false, isTranslation: Bool = false) {
         animateActionLayout {
-            navigation.isHidden = isCalculator
+            navigation.isHidden = isCalculator || isTranslation
         }
-        searchIcon.setCalculatorMode(isCalculator, isColor: isColor)
+        searchIcon.setCalculatorMode(isCalculator, isColor: isColor, isTranslation: isTranslation)
+    }
+
+    func setTranslationMode(_ enabled: Bool) {
+        guard translationExitButton.isHidden == enabled else { return }
+        animateActionLayout { translationExitButton.isHidden = !enabled }
+        translationSearchHeight?.isActive = enabled
+        searchField.setAccessibilityLabel(enabled ? "Text to translate" : "Search applications, actions, calculate, or translate")
+        searchField.placeholderString = enabled ? "Text to translate…" : "Search apps, actions, calculate, or translate…"
     }
 
     func updatePrecision(_ decimalPlaces: Int?, isRounding: Bool) {

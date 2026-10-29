@@ -4,9 +4,9 @@ import ServiceManagement
 @MainActor
 final class SettingsViewController: NSViewController {
     private enum Section: Int, CaseIterable {
-        case general
-        var title: String { "General" }
-        var symbol: String { "gearshape" }
+        case general, translation
+        var title: String { self == .general ? "General" : "Translation" }
+        var symbol: String { self == .general ? "gearshape" : "character.bubble" }
     }
 
     private let preferences: LauncherPreferences
@@ -24,6 +24,7 @@ final class SettingsViewController: NSViewController {
     private let content = NSStackView()
     private var sectionButtons: [NSButton] = []
     private var selectionSurfaces: [NSView] = []
+    private lazy var translationSettings = TranslationSettingsView()
     private var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.0"
     }
@@ -42,7 +43,7 @@ final class SettingsViewController: NSViewController {
 
     override func loadView() {
         view = AppearanceSurfaceView(fillColor: .windowBackgroundColor)
-        view.frame = NSRect(x: 0, y: 0, width: 680, height: 340)
+        view.frame = NSRect(x: 0, y: 0, width: 720, height: 560)
         let sidebar = makeSidebar()
         content.orientation = .vertical
         content.alignment = .leading
@@ -234,7 +235,14 @@ final class SettingsViewController: NSViewController {
             $0.removeFromSuperview()
         }
         addContent(label(section.title, size: 20, weight: .bold, color: Appearance.text))
-        addGeneralContent()
+        if section == .general { addGeneralContent() }
+        if section == .translation { addContent(translationSettings) }
+    }
+
+    func showTranslationSettings() {
+        _ = view
+        cancelRecording()
+        showSection(.translation)
     }
 
     private func addGeneralContent() {

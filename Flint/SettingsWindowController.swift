@@ -12,7 +12,7 @@ final class SettingsWindowController: NSWindowController {
             onRecordingStateChange: onRecordingStateChange, onMenuBarVisibilityChange: onMenuBarVisibilityChange
         )
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 680, height: 340),
+            contentRect: NSRect(x: 0, y: 0, width: 720, height: 560),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered, defer: false
         )
@@ -20,7 +20,7 @@ final class SettingsWindowController: NSWindowController {
         window.title = "Flint Settings"
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
-        window.minSize = NSSize(width: 640, height: 320)
+        window.minSize = NSSize(width: 700, height: 560)
         window.isReleasedWhenClosed = false
         window.appearance = nil
         window.contentViewController = settingsController
@@ -37,4 +37,6 @@ final class SettingsWindowController: NSWindowController {
         showWindow(nil)
         window?.makeKeyAndOrderFront(nil)
     }
+
+    func showTranslationSettings() { settingsController.showTranslationSettings() }
 }

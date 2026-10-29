@@ -4,6 +4,10 @@ import AppKit
 struct AppearanceChecks {
     @MainActor static func main() {
         print(AppearanceCheckWindows.showsWindows ? "UI checks: visible windows" : "UI checks: offscreen windows; keyboard focus preserved")
+        if ProcessInfo.processInfo.environment["FLINT_TRANSLATION_ONLY"] == "1" {
+            checkTranslationIntegration()
+            return
+        }
         if ProcessInfo.processInfo.environment["FLINT_MODE_SWITCHING_ONLY"] == "1" {
             checkKeyboardHintFeedback()
             checkColorConversionIntegration()
@@ -71,6 +75,7 @@ struct AppearanceChecks {
         checkKeyboardHintFeedback()
         checkActionGroupResizing()
         checkLauncherRowIcons()
+        checkTranslationIntegration()
         checkColorConversionIntegration()
         checkCalculatorIntegration()
         checkNumericRoundingIntegration()

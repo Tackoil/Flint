@@ -51,10 +51,10 @@ final class ApplicationRowContent: NSTableCellView {
         kindLabel.stringValue = item.kind
         appIcon.image = icon
         let iconSize: CGFloat
-        if case .action = item {
-            iconSize = LauncherLayout.actionIconSize
-        } else {
+        if case .application = item {
             iconSize = LauncherLayout.applicationIconSize
+        } else {
+            iconSize = LauncherLayout.actionIconSize
         }
         iconWidth.constant = iconSize
         iconHeight.constant = iconSize

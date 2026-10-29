@@ -26,6 +26,9 @@ final class LauncherWindowController: NSWindowController, NSWindowDelegate {
     var onShowSettings: (() -> Void)? {
         didSet { applicationsController.onShowSettings = onShowSettings }
     }
+    var onShowTranslationSettings: (() -> Void)? {
+        didSet { applicationsController.onShowTranslationSettings = onShowTranslationSettings }
+    }
 
     init(preferences: LauncherPreferences = LauncherPreferences(), keepsOpenOnFocusLoss: Bool = false) {
         self.preferences = preferences
@@ -80,6 +83,7 @@ final class LauncherWindowController: NSWindowController, NSWindowDelegate {
     func hideLauncher() {
         guard isPresented else { return }
         applicationsController.cancelDialog()
+        applicationsController.cancelTranslation()
         setPresented(false)
     }
 

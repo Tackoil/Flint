@@ -40,10 +40,23 @@ The launcher opens as a compact search bar. Type to expand the application resul
 | Command–Space | Show or hide Flint |
 | Up / Down | Select the previous / next result |
 | Return | Open the selected app or run the selected action |
-| Escape | Hide Flint |
+| Tab | Enter the selected Translate action; otherwise keep focus in search |
+| Escape | Return from translation to search, or hide Flint |
 | Command–R | Refresh installed applications |
 
 Flint also has a flame icon in the menu bar with **Show Flint**, **Settings…**, and **Quit Flint** actions. If another app has reserved the launcher shortcut, use the menu bar to open Flint. Clicking outside the launcher dismisses it.
+
+## Translation
+
+Find the **Translate** action using normal launcher search, select it, and press **Tab**. Search supports the same prefixes, substrings, and abbreviations as other actions; there is no special trigger word. Return does not enter Translate. Flint clears the search and shows the translation icon and **Text to translate…** placeholder. Type or paste the text to translate: translation starts automatically when you pause typing for **600 ms**. The source language is detected automatically. Press **Return** or click **Copy Translation** when the result is ready to copy it and dismiss Flint. Longer translations scroll and their text can also be selected and copied.
+
+Open **Settings → Translation** to save your DeepSeek API key and choose the target language. Simplified Chinese is the default; English, Traditional Chinese, Japanese, Korean, French, German, Spanish, Portuguese, Italian, Russian, Arabic, Hindi, Vietnamese, and Thai are also available. The API key is stored in macOS Keychain, can be replaced or removed, and is never displayed after saving. Use **Get a DeepSeek API Key…** to open the DeepSeek platform.
+
+Translation uses DeepSeek’s `deepseek-flash` model through its HTTPS Chat Completions API with thinking disabled. Text entered in translation mode is sent automatically after the typing pause, up to 12,000 characters per request. Flint does not save translation history. Every edit restarts the pause, cancels an outstanding request, and clears the previous result; late responses cannot overwrite newer text. Empty input is not sent, and unfinished input-method composition waits until committed. Leaving translation or dismissing the launcher cancels both pending and in-flight requests. Errors explain missing or invalid credentials, insufficient balance, rate limits, connection failures, and incomplete responses, with a retry or Settings action.
+
+Press **Escape**, click **Exit** beside its Escape key hint in the footer action group, or press **Backspace** on an empty translation search bar to return to normal search. The gear button opens Settings; translation results have no separate Settings button. While translation mode is active, the text is treated as translation input even if it looks like a calculation, color, app, or action. Opening Flint again starts in normal search.
+
+API reference: [DeepSeek Chat Completions](https://api-docs.deepseek.com/api/create-chat-completion/).
 
 ## Calculator
 
@@ -103,7 +116,7 @@ The `--keep-open` argument is a testing option only; it is not shown or saved in
 
 ## Checks
 
-The discovery and search code is also a standalone Swift package:
+The core logic is also a standalone Swift package:
 
 ```sh
 swift test
@@ -113,4 +126,4 @@ cognitive --threshold 15 Sources Flint Tests
 
 Desktop appearance checks run offscreen by default and do not activate their windows or take keyboard focus. To intentionally watch the windows during a visual inspection, run `FLINT_UI_TESTS_VISIBLE=1 sh scripts/check-appearance.sh`. Image previews can still be rendered to files while the windows stay offscreen.
 
-This version contains application search and launching, numeric calculations, color conversion, system actions, and shortcut settings.
+This version contains application search and launching, DeepSeek translation, numeric calculations, color conversion, system actions, and shortcut settings.

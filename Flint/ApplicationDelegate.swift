@@ -18,6 +18,10 @@ final class ApplicationDelegate: NSObject, NSApplicationDelegate, UNUserNotifica
         hotKey = makeHotKey(for: preferences.shortcut)
         installStatusItem()
         launcher?.onShowSettings = { [weak self] in self?.showSettings() }
+        launcher?.onShowTranslationSettings = { [weak self] in
+            self?.showSettings()
+            self?.settingsController?.showTranslationSettings()
+        }
         if !wasLaunchedAtLogin { showLauncher() }
     }
 

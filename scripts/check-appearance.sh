@@ -16,12 +16,18 @@ xcrun swiftc -swift-version 5 -parse-as-library -D FLINT_APPEARANCE_CHECKS \
     "$project_dir/Flint/LauncherWindowController.swift" \
     "$project_dir/Flint/CalculatorResultView.swift" \
     "$project_dir/Flint/ColorResultView.swift" \
+    "$project_dir/Flint/TranslationResultView.swift" \
+    "$project_dir/Flint/TranslationSettingsView.swift" \
+    "$project_dir/Flint/ShortcutRecorder.swift" \
+    "$project_dir/Flint/LauncherHotKey.swift" \
+    "$project_dir/Flint/SettingsViewController.swift" \
     "$project_dir"/Sources/FlintCore/*.swift \
     "$project_dir/Tests/FlintAppearanceChecks/CalculatorChecks.swift" \
     "$project_dir/Tests/FlintAppearanceChecks/AppearanceCheckWindows.swift" \
     "$project_dir/Tests/FlintAppearanceChecks/ColorChecks.swift" \
     "$project_dir/Tests/FlintAppearanceChecks/RoundingChecks.swift" \
     "$project_dir/Tests/FlintAppearanceChecks/LauncherDialogChecks.swift" \
+    "$project_dir/Tests/FlintAppearanceChecks/TranslationChecks.swift" \
     "$project_dir/Tests/FlintAppearanceChecks/main.swift" \
     -o "$appearance_check_dir/check"
 "$appearance_check_dir/check"

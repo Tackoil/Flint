@@ -1,7 +1,7 @@
 import AppKit
 
 enum KeyboardHint: Equatable {
-    case returnKey, escape, upArrow, downArrow, leftArrow, rightArrow, command
+    case returnKey, tab, escape, upArrow, downArrow, leftArrow, rightArrow, command
     case text(String)
 
     static let pointSize: CGFloat = 11
@@ -14,6 +14,7 @@ enum KeyboardHint: Equatable {
     var name: String {
         switch self {
         case .returnKey: return "Return"
+        case .tab: return "Tab"
         case .escape: return "Escape"
         case .upArrow: return "Up Arrow"
         case .downArrow: return "Down Arrow"
@@ -27,6 +28,7 @@ enum KeyboardHint: Equatable {
     private var symbolName: String? {
         switch self {
         case .returnKey: return "return"
+        case .tab: return "arrow.right.to.line"
         case .escape: return "escape"
         case .upArrow: return "arrow.up"
         case .downArrow: return "arrow.down"
@@ -38,6 +40,7 @@ enum KeyboardHint: Equatable {
     }
 
     func matches(_ event: NSEvent) -> Bool {
+        if self == .tab && event.modifierFlags.contains(.shift) { return false }
         if self == .command { return event.modifierFlags.contains(.command) }
         if case .text(let text) = self {
             return !text.isEmpty && event.charactersIgnoringModifiers?.lowercased() == text.lowercased()
@@ -49,6 +52,7 @@ enum KeyboardHint: Equatable {
     private var keyCodes: [UInt16] {
         switch self {
         case .returnKey: return [36, 76]
+        case .tab: return [48]
         case .escape: return [53]
         case .upArrow: return [126]
         case .downArrow: return [125]

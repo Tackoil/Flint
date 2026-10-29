@@ -25,6 +25,7 @@ private final class LauncherResultsScrollView: NSScrollView {
 final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     var onDismiss: (() -> Void)?
     var onShowSettings: (() -> Void)?
+    var onShowTranslationSettings: (() -> Void)?
     var onDisplayModeChange: ((LauncherDisplayMode) -> Void)?
     private let chrome = LauncherHeaderFooter()
     private let launcherContent = NSView(frame: NSRect(x: 0, y: 0, width: 760, height: 560))
@@ -35,6 +36,10 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     private let tableView = NSTableView()
     private let scrollView = LauncherResultsScrollView()
     private let calculatorView = CalculatorResultView()
+    private let translationView = TranslationResultView()
+    private let translationPreferences = TranslationPreferences()
+    let translationSession: TranslationSession
+    private(set) var isTranslationMode = false
     private var calculation: CalculatorResult?
     private var colorOutputFormat: ColorConversion.Format?
     private var isColorSwitchingEnabled = true
@@ -53,9 +58,17 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     var isPresentingDialog: Bool { dialog != nil }
     var displayMode: LauncherDisplayMode {
         if isPresentingDialog { return .results }
+        if isTranslationMode { return .results }
         if calculation != nil { return .calculator }
         return isSearchExpanded ? .results : .collapsed
     }
+
+    init(translationSession: TranslationSession? = nil) {
+        self.translationSession = translationSession ?? TranslationSession()
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError("Use init()") }
 
     override func loadView() {
         view = Appearance.launcherSurface(content: launcherContent)
@@ -74,6 +87,10 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         chrome.roundingModeButton.action = #selector(toggleRoundingMode)
         chrome.colorModeButton.target = self
         chrome.colorModeButton.action = #selector(toggleColorSwitchingMode)
+        chrome.translationExitButton.target = self
+        chrome.translationExitButton.action = #selector(exitTranslationMode)
+        translationView.onExit = { [weak self] in self?.exitTranslationMode() }
+        translationSession.onChange = { [weak self] in self?.applyQuery() }
         refreshApplications()
     }
 
@@ -116,6 +133,9 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         calculatorView.translatesAutoresizingMaskIntoConstraints = false
         calculatorView.isHidden = true
         list.addSubview(calculatorView)
+        translationView.translatesAutoresizingMaskIntoConstraints = false
+        translationView.isHidden = true
+        list.addSubview(translationView)
         let footer = chrome.footer()
         footer.wantsLayer = true
         footerView = footer
@@ -130,6 +150,10 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
             calculatorView.trailingAnchor.constraint(equalTo: list.trailingAnchor),
             calculatorView.topAnchor.constraint(equalTo: list.topAnchor),
             calculatorView.bottomAnchor.constraint(equalTo: footer.topAnchor),
+            translationView.leadingAnchor.constraint(equalTo: list.leadingAnchor),
+            translationView.trailingAnchor.constraint(equalTo: list.trailingAnchor),
+            translationView.topAnchor.constraint(equalTo: list.topAnchor),
+            translationView.bottomAnchor.constraint(equalTo: footer.topAnchor),
             statusLabel.centerXAnchor.constraint(equalTo: list.centerXAnchor),
             statusLabel.centerYAnchor.constraint(equalTo: list.centerYAnchor),
             statusLabel.widthAnchor.constraint(lessThanOrEqualTo: list.widthAnchor, constant: -60),
@@ -181,6 +205,8 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         isRoundingEnabled = true
         colorOutputFormat = nil
         isColorSwitchingEnabled = true
+        isTranslationMode = false
+        translationSession.cancel()
         chrome.searchField.stringValue = ""
         applyQuery()
         view.window?.makeFirstResponder(chrome.searchField)
@@ -190,24 +216,9 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
 
     private func applyQuery() {
         let query = chrome.searchField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        let isExpanded = !query.isEmpty
-        let items = applications.map(LauncherItem.application) + SystemAction.allCases.map(LauncherItem.action)
-        let evaluated = Calculator.evaluate(query, timestampUnit: timestampOutputUnit, colorFormat: colorOutputFormat)
-        if case .numeric(let previous) = calculation, case .numeric(let current) = evaluated,
-           previous.expression == current.expression, previous.value == current.value {
-            calculation = .numeric(previous)
-        } else {
-            calculation = evaluated
-        }
-        results = isExpanded && calculation == nil ? ApplicationSearch.filter(items, query: query) : []
-        calculatorView.isHidden = calculation == nil
-        scrollView.isHidden = calculation != nil
-        if let calculation { calculatorView.configure(calculation) }
-        chrome.setCalculatorMode(calculation != nil, isColor: colorConversion != nil)
-        chrome.setColorFormatSwitching(colorConversion?.format, isEnabled: isColorSwitchingEnabled)
-        chrome.updatePrecision(calculation?.decimalPlaceCount, isRounding: isRoundingEnabled)
-        chrome.setTimestampUnitSwitching(canSwitchTimestampUnit ? timestampOutputUnit : nil)
-        chrome.openButton.isEnabled = (calculation != nil || !results.isEmpty) && !isOpening
+        let isExpanded = isTranslationMode || !query.isEmpty
+        updateQueryContent(query, isExpanded: isExpanded)
+        updateToolViews()
         updateEmptyState(hasQuery: isExpanded)
         tableView.reloadData()
         if !results.isEmpty {
@@ -218,6 +229,43 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         updateResultsVisibility(isExpanded)
         updateResultsHeight()
         onDisplayModeChange?(displayMode)
+    }
+
+    private func updateQueryContent(_ query: String, isExpanded: Bool) {
+        translationSession.update(query: isTranslationMode ? TranslationQuery(text: chrome.searchField.stringValue) : nil,
+                                  language: translationPreferences.targetLanguage,
+                                  isComposing: (chrome.searchField.currentEditor() as? NSTextView)?.hasMarkedText() == true)
+        if isTranslationMode {
+            calculation = nil
+            results = []
+            return
+        }
+        let items = applications.map(LauncherItem.application) + SystemAction.allCases.map(LauncherItem.action) + [.translation]
+        let evaluated = Calculator.evaluate(query, timestampUnit: timestampOutputUnit, colorFormat: colorOutputFormat)
+        if case .numeric(let previous) = calculation, case .numeric(let current) = evaluated,
+           previous.expression == current.expression, previous.value == current.value {
+            calculation = .numeric(previous)
+        } else {
+            calculation = evaluated
+        }
+        results = isExpanded && calculation == nil ? ApplicationSearch.filter(items, query: query) : []
+    }
+
+    private func updateToolViews() {
+        calculatorView.isHidden = calculation == nil
+        scrollView.isHidden = calculation != nil || isTranslationMode
+        translationView.isHidden = !isTranslationMode
+        chrome.setTranslationMode(isTranslationMode)
+        if isTranslationMode { translationView.configure(translationSession) }
+        if let calculation { calculatorView.configure(calculation) }
+        chrome.setCalculatorMode(calculation != nil, isColor: colorConversion != nil, isTranslation: isTranslationMode)
+        chrome.setColorFormatSwitching(colorConversion?.format, isEnabled: isColorSwitchingEnabled)
+        chrome.updatePrecision(calculation?.decimalPlaceCount, isRounding: isRoundingEnabled)
+        chrome.setTimestampUnitSwitching(canSwitchTimestampUnit ? timestampOutputUnit : nil)
+        chrome.openButton.isEnabled = (calculation != nil || !results.isEmpty) && !isOpening
+        if isTranslationMode {
+            chrome.openButton.isEnabled = translationSession.state.canPerformAction
+        }
     }
 
     private func updateResultsHeight() {
@@ -271,14 +319,14 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     }
 
     private func updateEmptyState(hasQuery: Bool) {
-        statusLabel.isHidden = calculation != nil || !results.isEmpty || !hasQuery
+        statusLabel.isHidden = isTranslationMode || calculation != nil || !results.isEmpty || !hasQuery
         statusLabel.stringValue = isLoading ? "Finding your applications…"
             : "No applications or actions found\nTry a different name."
     }
 
     private func updateSelection() {
         let row = tableView.selectedRow
-        chrome.updateActionTitle(conversionActionTitle(row: row))
+        chrome.updateActionTitle(conversionActionTitle(row: row), hint: selectedItem == .translation ? .tab : .returnKey)
         let visible = tableView.rows(in: tableView.visibleRect)
         guard visible.location != NSNotFound else { return }
         for index in visible.location..<NSMaxRange(visible) {
@@ -288,6 +336,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     }
 
     private func conversionActionTitle(row: Int) -> String {
+        if isTranslationMode { return translationActionTitle }
         if colorConversion != nil { return "Copy Color" }
         return calculation != nil ? "Copy Answer" : selectedActionTitle(row: row)
     }
@@ -304,6 +353,10 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
 
     @objc private func openSelectedApplication() {
         guard !isOpening, !isPresentingDialog else { return }
+        if isTranslationMode {
+            performTranslationAction()
+            return
+        }
         if calculation != nil {
             copyCalculationAnswer(to: .general)
             return
@@ -318,7 +371,54 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
             openApplication(app)
         } else if case .action(let action) = item {
             runAction(action)
+        } else if case .translation = item {
+            enterTranslationMode()
         }
+    }
+
+    private var translationActionTitle: String {
+        if translationSession.state.answer != nil { return "Copy Translation" }
+        if translationSession.state == .loading { return "Translating…" }
+        if translationSession.state == .waiting { return "Waiting…" }
+        if translationSession.state == .needsAPIKey { return "Open Settings" }
+        if case .failed = translationSession.state { return "Try Again" }
+        return "Copy Translation"
+    }
+
+    private func performTranslationAction() {
+        if translationSession.state == .needsAPIKey { showTranslationSettings(); return }
+        if translationSession.state.answer != nil {
+            copyTranslationAnswer(to: .general)
+            return
+        }
+        if case .failed = translationSession.state { translationSession.submit() }
+    }
+
+    func copyTranslationAnswer(to pasteboard: NSPasteboard) {
+        guard let answer = translationSession.state.answer else { return }
+        pasteboard.clearContents()
+        pasteboard.setString(answer, forType: .string)
+        onDismiss?()
+    }
+
+    private func enterTranslationMode() {
+        isTranslationMode = true
+        chrome.searchField.stringValue = ""
+        applyQuery()
+        view.window?.makeFirstResponder(chrome.searchField)
+    }
+
+    @objc private func exitTranslationMode() {
+        isTranslationMode = false
+        chrome.searchField.stringValue = ""
+        applyQuery()
+        view.window?.makeFirstResponder(chrome.searchField)
+    }
+
+    func cancelTranslation() { translationSession.cancel() }
+
+    @objc private func showTranslationSettings() {
+        onShowTranslationSettings?()
     }
 
     func copyCalculationAnswer(to pasteboard: NSPasteboard) {
@@ -416,6 +516,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     @objc private func showSettings() { onShowSettings?() }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        if handleTranslationCommand(commandSelector) { return true }
         if handleColorModeCommand(commandSelector) { return true }
         if handleColorFormatCommand(commandSelector) { return true }
         if handleTimestampUnitCommand(commandSelector) { return true }
@@ -432,6 +533,25 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         guard let action = actions[commandSelector] else { return false }
         action()
         return true
+    }
+
+    private func handleTranslationCommand(_ selector: Selector) -> Bool {
+        if selector == #selector(NSResponder.insertTab(_:)) {
+            if !isTranslationMode, selectedItem == .translation { enterTranslationMode() }
+            return true
+        }
+        if isTranslationMode {
+            let exits = selector == #selector(NSResponder.cancelOperation(_:))
+                || (selector == #selector(NSResponder.deleteBackward(_:)) && chrome.searchField.stringValue.isEmpty)
+            if exits { exitTranslationMode(); return true }
+            return false
+        }
+        return selector == #selector(NSResponder.insertNewline(_:)) && selectedItem == .translation
+    }
+
+    private var selectedItem: LauncherItem? {
+        let row = tableView.selectedRow
+        return results.indices.contains(row) ? results[row] : nil
     }
 
     private func handleColorModeCommand(_ selector: Selector) -> Bool {
@@ -578,15 +698,17 @@ extension ApplicationsViewController: NSTableViewDataSource, NSTableViewDelegate
 
     private func icon(for item: LauncherItem) -> NSImage {
         if let image = iconCache.object(forKey: item.id as NSString) { return image }
-        let image: NSImage
-        switch item {
-        case .application(let app):
-            image = NSWorkspace.shared.icon(forFile: app.url.path)
-        case .action(let action):
-            image = NSImage(systemSymbolName: action.symbolName, accessibilityDescription: action.name) ?? NSImage()
-        }
+        let image = loadIcon(for: item)
         image.size = NSSize(width: 64, height: 64)
         iconCache.setObject(image, forKey: item.id as NSString)
         return image
+    }
+
+    private func loadIcon(for item: LauncherItem) -> NSImage {
+        if case .application(let app) = item { return NSWorkspace.shared.icon(forFile: app.url.path) }
+        if case .action(let action) = item {
+            return NSImage(systemSymbolName: action.symbolName, accessibilityDescription: action.name) ?? NSImage()
+        }
+        return NSImage(systemSymbolName: "character.bubble", accessibilityDescription: "Translate") ?? NSImage()
     }
 }
