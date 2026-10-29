@@ -10,11 +10,15 @@ final class SettingsWindowController: NSWindowController {
             preferences: preferences, onShortcutChange: onShortcutChange, onRecordingStateChange: onRecordingStateChange
         )
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 560, height: 330),
-            styleMask: [.titled, .closable], backing: .buffered, defer: false
+            contentRect: NSRect(x: 0, y: 0, width: 860, height: 590),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            backing: .buffered, defer: false
         )
         super.init(window: window)
         window.title = "Flint Settings"
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.minSize = NSSize(width: 800, height: 560)
         window.isReleasedWhenClosed = false
         window.appearance = nil
         window.contentViewController = settingsController

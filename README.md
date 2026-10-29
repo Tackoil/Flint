@@ -10,7 +10,7 @@ The launcher fades in when shown and fades out when dismissed, including with Es
 
 ## Run
 
-Open `Flint.xcodeproj`, select the **Flint** scheme, and run on **My Mac**. Local builds use ad hoc signing with the Apple Events entitlement for the Empty Trash action.
+Open `Flint.xcodeproj`, select the **Flint** scheme, and run on **My Mac**. Local builds use ad hoc signing so macOS can register Flint as a login item.
 
 Or build and open from the terminal:
 
@@ -41,7 +41,7 @@ The launcher opens as a compact search bar. Type to expand the application resul
 | Escape | Hide Flint |
 | Command–R | Refresh installed applications |
 
-Flint also has a flame icon in the menu bar with **Show Flint**, **Settings…**, and **Quit Flint** actions. If another app has reserved the launcher shortcut, use the menu bar to open Flint. Clicking outside the launcher dismisses it. Nothing is configured to run at login.
+Flint also has a flame icon in the menu bar with **Show Flint**, **Settings…**, and **Quit Flint** actions. If another app has reserved the launcher shortcut, use the menu bar to open Flint. Clicking outside the launcher dismisses it.
 
 ## Actions
 
@@ -49,9 +49,13 @@ Search for **Eject All Disks**, **Empty Trash**, or **Show Desktop**, then click
 
 **Eject All Disks** safely ejects removable or ejectable volumes, including external disks and disk images, and excludes internal volumes. It attempts every disk and reports any failures, such as a disk being in use. **Empty Trash** asks for confirmation before permanently deleting items through Finder; macOS may request permission for Flint to control Finder. **Show Desktop** uses Mission Control’s desktop mode without depending on your keyboard shortcut. Successful actions dismiss Flint.
 
-Dialogs use untinted regular Liquid Glass on macOS 26 and later, with a standard popover material on older versions, and dim only the inside of the rounded launcher. Native macOS push buttons show Escape and Return key hints: Escape cancels and Return confirms (or acknowledges an error). Keyboard hints use consistent rounded rectangle outlines and symbols in the launcher footer and dialogs. Labeled hints keep a consistent gap between the action text and the outlined key. Each key runs its labeled action directly; dialog buttons have no selection or navigation state. Closing a dialog returns focus to search. Action icons are smaller than application icons while keeping the result text aligned.
+Dialogs use untinted regular Liquid Glass on macOS 26 and later, with a standard popover material on older versions, and dim only the inside of the rounded launcher. Native macOS push buttons show Escape and Return key hints: Escape cancels and Return confirms (or acknowledges an error). Keyboard hints use consistent rounded rectangle outlines and symbols in the launcher footer, dialogs, and Settings shortcut reference. Labeled hints keep a consistent gap between the action text and the outlined key. Each key runs its labeled action directly; dialog buttons have no selection or navigation state. Closing a dialog returns focus to search. Action icons are smaller than application icons while keeping the result text aligned.
 
 ## Settings
+
+Settings uses a resizable sidebar layout with **General** for shortcut preferences and **Shortcuts** for the available keyboard commands. It follows the system’s light or dark appearance.
+
+Turn on **Launch at login** in General to start Flint automatically in the menu bar when you log in. Login launches keep the launcher hidden until you use the shortcut or menu. The switch reflects macOS’s login-item status; if approval is required, use **Open Login Items…** to allow Flint in System Settings. Turn the switch off to remove the login item.
 
 Open Settings with **Command–Comma**, the gear button in the launcher footer, or **Settings…** in the flame menu. Click the shortcut button and press your own key combination. Use Command, Option, or Control with a key (and optionally Shift), or a function key such as F6. Escape cancels recording, and Tab leaves the recorder. Recording also cancels if Settings loses focus or closes. The active launcher hotkey is temporarily suspended during recording so you can record the same combination again.
 

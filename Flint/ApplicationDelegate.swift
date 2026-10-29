@@ -16,7 +16,13 @@ final class ApplicationDelegate: NSObject, NSApplicationDelegate {
         hotKey = makeHotKey(for: preferences.shortcut)
         installStatusItem()
         launcher?.onShowSettings = { [weak self] in self?.showSettings() }
-        showLauncher()
+        if !wasLaunchedAtLogin { showLauncher() }
+    }
+
+    private var wasLaunchedAtLogin: Bool {
+        NSAppleEventManager.shared().currentAppleEvent?
+            .paramDescriptor(forKeyword: keyAEPropData)?
+            .paramDescriptor(forKeyword: keyAELaunchedAsLogInItem)?.booleanValue == true
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
