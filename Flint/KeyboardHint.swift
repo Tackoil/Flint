@@ -1,7 +1,7 @@
 import AppKit
 
 enum KeyboardHint: Equatable {
-    case returnKey, escape, upArrow, downArrow, command
+    case returnKey, escape, upArrow, downArrow, leftArrow, rightArrow, command
     case text(String)
 
     static let pointSize: CGFloat = 11
@@ -17,6 +17,8 @@ enum KeyboardHint: Equatable {
         case .escape: return "Escape"
         case .upArrow: return "Up Arrow"
         case .downArrow: return "Down Arrow"
+        case .leftArrow: return "Left Arrow"
+        case .rightArrow: return "Right Arrow"
         case .command: return "Command"
         case .text(let text): return text
         }
@@ -28,6 +30,8 @@ enum KeyboardHint: Equatable {
         case .escape: return "escape"
         case .upArrow: return "arrow.up"
         case .downArrow: return "arrow.down"
+        case .leftArrow: return "arrow.left"
+        case .rightArrow: return "arrow.right"
         case .command: return "command"
         case .text: return nil
         }
@@ -48,6 +52,8 @@ enum KeyboardHint: Equatable {
         case .escape: return [53]
         case .upArrow: return [126]
         case .downArrow: return [125]
+        case .leftArrow: return [123]
+        case .rightArrow: return [124]
         case .command, .text: return []
         }
     }

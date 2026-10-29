@@ -35,7 +35,9 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     private let tableView = NSTableView()
     private let scrollView = LauncherResultsScrollView()
     private let calculatorView = CalculatorResultView()
-    private var calculation: NumericCalculation?
+    private var calculation: CalculatorResult?
+    private var isRoundingEnabled = true
+    private var timestampOutputUnit = TimestampCalculation.Unit.seconds
     private let statusLabel = Appearance.label("Finding your applications…", size: 14)
     private let iconCache = NSCache<NSString, NSImage>()
     private var applications: [ApplicationRecord] = []
@@ -66,6 +68,14 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         chrome.openButton.isEnabled = false
         chrome.settingsButton.target = self
         chrome.settingsButton.action = #selector(showSettings)
+        chrome.roundingModeButton.target = self
+        chrome.roundingModeButton.action = #selector(toggleRoundingMode)
+        calculatorView.onTimestampUnitChange = { [weak self] unit in
+            guard let self else { return }
+            self.timestampOutputUnit = unit
+            self.applyQuery()
+            self.view.window?.makeFirstResponder(self.chrome.searchField)
+        }
         refreshApplications()
     }
 
@@ -170,6 +180,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
 
     func resetSearch() {
         _ = view
+        isRoundingEnabled = true
         chrome.searchField.stringValue = ""
         applyQuery()
         view.window?.makeFirstResponder(chrome.searchField)
@@ -181,13 +192,20 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         let query = chrome.searchField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         let isExpanded = !query.isEmpty
         let items = applications.map(LauncherItem.application) + SystemAction.allCases.map(LauncherItem.action)
-        calculation = NumericCalculator.evaluate(query)
+        let evaluated = Calculator.evaluate(query, timestampUnit: timestampOutputUnit)
+        if case .numeric(let previous) = calculation, case .numeric(let current) = evaluated,
+           previous.expression == current.expression, previous.value == current.value {
+            calculation = .numeric(previous)
+        } else {
+            calculation = evaluated
+        }
         results = isExpanded && calculation == nil ? ApplicationSearch.filter(items, query: query) : []
         calculatorView.isHidden = calculation == nil
         scrollView.isHidden = calculation != nil
         if let calculation { calculatorView.configure(calculation) }
         chrome.setCalculatorMode(calculation != nil)
-        chrome.openButton.isEnabled = (calculation?.value != nil || !results.isEmpty) && !isOpening
+        chrome.updatePrecision(calculation?.decimalPlaceCount, isRounding: isRoundingEnabled)
+        chrome.openButton.isEnabled = (calculation != nil || !results.isEmpty) && !isOpening
         updateEmptyState(hasQuery: isExpanded)
         tableView.reloadData()
         if !results.isEmpty {
@@ -386,6 +404,8 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     @objc private func showSettings() { onShowSettings?() }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        if handleRoundingModeCommand(commandSelector) { return true }
+        if handlePrecisionCommand(commandSelector) { return true }
         let actions: [Selector: () -> Void] = [
             #selector(NSResponder.moveDown(_:)): { self.moveSelection(by: 1) },
             #selector(NSResponder.moveUp(_:)): { self.moveSelection(by: -1) },
@@ -397,6 +417,53 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         guard let action = actions[commandSelector] else { return false }
         action()
         return true
+    }
+
+    private func handlePrecisionCommand(_ selector: Selector) -> Bool {
+        let offsets: [Selector: Int] = [
+            #selector(NSResponder.moveLeft(_:)): -1, #selector(NSResponder.moveBackward(_:)): -1,
+            #selector(NSResponder.moveRight(_:)): 1, #selector(NSResponder.moveForward(_:)): 1
+        ]
+        guard let offset = offsets[selector], isRoundingEnabled, !isPresentingDialog,
+              NSApp.currentEvent?.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty != false,
+              case .numeric(var numeric) = calculation else { return false }
+        numeric.adjustPrecision(by: offset)
+        let result = CalculatorResult.numeric(numeric)
+        calculation = result
+        calculatorView.configure(result)
+        chrome.updatePrecision(numeric.decimalPlaceCount, isRounding: isRoundingEnabled)
+        return true
+    }
+
+    private func handleRoundingModeCommand(_ selector: Selector) -> Bool {
+        let modes: [Selector: Bool] = [
+            #selector(NSResponder.moveUp(_:)): false,
+            #selector(NSResponder.moveDown(_:)): true
+        ]
+        guard let enabled = modes[selector], !isPresentingDialog, !isOpening,
+              calculation?.decimalPlaceCount != nil,
+              NSApp.currentEvent?.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty != false else {
+            return false
+        }
+        setRoundingEnabled(enabled)
+        return true
+    }
+
+    @objc private func toggleRoundingMode() {
+        guard !isPresentingDialog, !isOpening, calculation?.decimalPlaceCount != nil else { return }
+        setRoundingEnabled(!isRoundingEnabled)
+    }
+
+    private func setRoundingEnabled(_ enabled: Bool) {
+        isRoundingEnabled = enabled
+        if !enabled, case .numeric(var numeric) = calculation {
+            numeric.resetPrecision()
+            let result = CalculatorResult.numeric(numeric)
+            calculation = result
+            calculatorView.configure(result)
+        }
+        chrome.updatePrecision(calculation?.decimalPlaceCount, isRounding: enabled)
+        if chrome.searchField.currentEditor() == nil { view.window?.makeFirstResponder(chrome.searchField) }
     }
 
     private func moveSelection(by offset: Int) {

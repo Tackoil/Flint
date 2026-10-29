@@ -60,6 +60,9 @@ struct AppearanceChecks {
         checkKeyboardHintFeedback()
         checkLauncherRowIcons()
         checkCalculatorIntegration()
+        checkNumericRoundingIntegration()
+        checkRoundingModeSwitches()
+        checkTimestampIntegration()
         checkCalculatorToSearchTransitions()
     }
 }

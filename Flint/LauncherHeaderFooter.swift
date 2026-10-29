@@ -92,15 +92,56 @@ private final class LauncherOpenButton: NSButton {
 
 }
 
+private final class LauncherRoundingModeButton: NSButton {
+    private let content = KeyboardHintView(.upArrow, label: "Edit expression")
+
+    override var acceptsFirstResponder: Bool { false }
+
+    init() {
+        super.init(frame: .zero)
+        title = ""
+        isBordered = false
+        (cell as? NSButtonCell)?.highlightsBy = []
+        content.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(content)
+        NSLayoutConstraint.activate([
+            heightAnchor.constraint(equalToConstant: 30),
+            content.leadingAnchor.constraint(equalTo: leadingAnchor),
+            content.trailingAnchor.constraint(equalTo: trailingAnchor),
+            content.centerYAnchor.constraint(equalTo: centerYAnchor)
+        ])
+        update(isRounding: true)
+    }
+
+    required init?(coder: NSCoder) { fatalError("Use init()") }
+
+    func update(isRounding: Bool) {
+        let hint: KeyboardHint = isRounding ? .upArrow : .downArrow
+        let label = isRounding ? "Edit expression" : "Round result"
+        if content.hint != hint { content.hint = hint }
+        if content.label != label { content.label = label }
+        setAccessibilityLabel(label)
+        toolTip = "\(label) (\(hint.name))"
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        super.hitTest(point) == nil ? nil : self
+    }
+}
+
 final class LauncherHeaderFooter {
     static let searchBarHeight: CGFloat = LauncherLayout.cornerRadius * 2
     let searchField = NSTextField()
     let openButton: NSButton = LauncherOpenButton()
     let settingsButton = Appearance.button("")
+    let roundingModeButton: NSButton = LauncherRoundingModeButton()
     private let searchIcon = LauncherSearchIcon()
     private let navigation = Appearance.stack([
         Appearance.label("Navigate", size: 12, color: .labelColor), KeyboardHintView(.upArrow), KeyboardHintView(.downArrow)
     ], spacing: 4)
+    private let precisionLabel = Appearance.label("", size: 12, color: .labelColor)
+    private let precisionKeys = Appearance.stack([KeyboardHintView(.leftArrow), KeyboardHintView(.rightArrow)], spacing: 4)
+    private lazy var precisionControls = Appearance.stack([precisionLabel, precisionKeys], spacing: 4)
 
     func searchBar() -> NSView {
         NSLayoutConstraint.activate([
@@ -142,7 +183,10 @@ final class LauncherHeaderFooter {
 
     func footer() -> NSView {
         navigation.setAccessibilityLabel("Use the Up and Down arrow keys to navigate")
-        let actions = Appearance.actionGroup(content: Appearance.stack([openButton, navigation], spacing: 16))
+        precisionControls.isHidden = true
+        roundingModeButton.isHidden = true
+        let actions = Appearance.actionGroup(content: Appearance.stack(
+            [openButton, navigation, precisionControls, roundingModeButton], spacing: 16))
         settingsButton.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: "Settings")?
             .withSymbolConfiguration(.init(pointSize: 14, weight: .regular))
         settingsButton.imagePosition = .imageOnly
@@ -169,6 +213,24 @@ final class LauncherHeaderFooter {
     func setCalculatorMode(_ isCalculator: Bool) {
         navigation.isHidden = isCalculator
         searchIcon.setCalculatorMode(isCalculator)
+    }
+
+    func updatePrecision(_ decimalPlaces: Int?, isRounding: Bool) {
+        precisionControls.isHidden = decimalPlaces == nil || !isRounding
+        precisionKeys.isHidden = !isRounding
+        roundingModeButton.isHidden = decimalPlaces == nil
+        (roundingModeButton as? LauncherRoundingModeButton)?.update(isRounding: isRounding)
+        precisionLabel.stringValue = decimalPlaces.map { places in
+            let count = abs(places)
+            let digits = count == 1 ? "digit" : "digits"
+            let side = places < 0 ? "before" : "after"
+            return "\(count) \(digits) \(side) decimal"
+        } ?? ""
+        let help = isRounding
+            ? "Left decreases decimal places; Right increases them. Up edits the expression."
+            : "Left and Right move the cursor. Down rounds the result."
+        precisionControls.setAccessibilityLabel("\(precisionLabel.stringValue) point. \(help)")
+        precisionControls.toolTip = help
     }
 
     var isReturnKeyPressed: Bool { (openButton as? LauncherOpenButton)?.isReturnKeyPressed == true }

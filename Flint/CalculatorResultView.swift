@@ -1,19 +1,46 @@
 import AppKit
 
 final class CalculatorResultView: NSView {
+    var onTimestampUnitChange: ((TimestampCalculation.Unit) -> Void)?
     private let expressionLabel = Appearance.label("", size: 36, weight: .medium, color: .labelColor)
     private let answerLabel = Appearance.label("", size: 36, weight: .medium, color: .labelColor)
+    private let localTimeLabel = Appearance.label("", size: 12, color: .secondaryLabelColor)
+    private let answerTimeLabel = Appearance.label("", size: 12, color: .secondaryLabelColor)
+    private let sourceUnitLabel = Appearance.label("", size: 12, color: .secondaryLabelColor)
+    private let unitPicker = NSSegmentedControl(labels: ["Seconds", "Milliseconds"], trackingMode: .selectOne,
+                                                target: nil, action: nil)
+    private lazy var expressionHeight = expressionLabel.heightAnchor.constraint(equalToConstant: 56)
+    private lazy var answerHeight = answerLabel.heightAnchor.constraint(equalToConstant: 56)
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         let arrow = Appearance.symbol("arrow.right", size: 20, color: .tertiaryLabelColor)
-        for label in [expressionLabel, answerLabel] {
+        for label in [expressionLabel, answerLabel, localTimeLabel, answerTimeLabel, sourceUnitLabel] {
             label.alignment = .center
             label.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         }
         expressionLabel.lineBreakMode = .byTruncatingMiddle
         answerLabel.lineBreakMode = .byTruncatingMiddle
-        for item in [arrow, expressionLabel, answerLabel] {
+        localTimeLabel.lineBreakMode = .byTruncatingMiddle
+        localTimeLabel.isHidden = true
+        answerTimeLabel.lineBreakMode = .byTruncatingMiddle
+        answerTimeLabel.isHidden = true
+        sourceUnitLabel.isHidden = true
+        unitPicker.controlSize = .small
+        unitPicker.selectedSegment = 0
+        unitPicker.target = self
+        unitPicker.action = #selector(changeTimestampUnit)
+        unitPicker.setAccessibilityLabel("Unix timestamp unit")
+        unitPicker.toolTip = "Choose the unit to display and copy"
+        unitPicker.isHidden = true
+        let expression = NSStackView(views: [expressionLabel, localTimeLabel, sourceUnitLabel])
+        let answer = NSStackView(views: [answerLabel, answerTimeLabel, unitPicker])
+        for stack in [expression, answer] {
+            stack.orientation = .vertical
+            stack.alignment = .centerX
+            stack.spacing = 6
+        }
+        for item in [arrow, expression, answer] {
             item.translatesAutoresizingMaskIntoConstraints = false
             addSubview(item)
         }
@@ -22,24 +49,76 @@ final class CalculatorResultView: NSView {
             arrow.centerYAnchor.constraint(equalTo: centerYAnchor),
             arrow.widthAnchor.constraint(equalToConstant: 24),
             arrow.heightAnchor.constraint(equalToConstant: 24),
-            expressionLabel.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 40),
-            expressionLabel.trailingAnchor.constraint(equalTo: arrow.leadingAnchor, constant: -24),
-            expressionLabel.centerYAnchor.constraint(equalTo: arrow.centerYAnchor),
-            expressionLabel.heightAnchor.constraint(equalToConstant: 56),
-            answerLabel.leadingAnchor.constraint(equalTo: arrow.trailingAnchor, constant: 24),
-            answerLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -40),
-            answerLabel.centerYAnchor.constraint(equalTo: arrow.centerYAnchor),
-            answerLabel.heightAnchor.constraint(equalToConstant: 56)
+            expression.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 40),
+            expression.trailingAnchor.constraint(equalTo: arrow.leadingAnchor, constant: -24),
+            expression.centerYAnchor.constraint(equalTo: arrow.centerYAnchor),
+            expressionLabel.widthAnchor.constraint(equalTo: expression.widthAnchor),
+            expressionHeight,
+            localTimeLabel.widthAnchor.constraint(equalTo: expression.widthAnchor),
+            sourceUnitLabel.widthAnchor.constraint(equalTo: expression.widthAnchor),
+            answer.leadingAnchor.constraint(equalTo: arrow.trailingAnchor, constant: 24),
+            answer.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -40),
+            answer.centerYAnchor.constraint(equalTo: arrow.centerYAnchor),
+            answerLabel.widthAnchor.constraint(equalTo: answer.widthAnchor),
+            answerTimeLabel.widthAnchor.constraint(equalTo: answer.widthAnchor),
+            answerHeight
         ])
     }
 
     required init?(coder: NSCoder) { fatalError("Use init(frame:)") }
 
-    func configure(_ calculation: NumericCalculation) {
-        expressionLabel.stringValue = calculation.formattedExpression
-        answerLabel.stringValue = calculation.formattedAnswer()
-        setAccessibilityLabel("Calculator: \(calculation.expression). \(calculation.answer)")
-        toolTip = calculation.answer
+    func configure(_ result: CalculatorResult) {
+        switch result {
+        case .numeric(let calculation):
+            expressionLabel.stringValue = calculation.formattedExpression
+            answerLabel.stringValue = calculation.formattedAnswer()
+            expressionLabel.font = .systemFont(ofSize: 36, weight: .medium)
+            expressionHeight.constant = 56
+            answerLabel.font = .systemFont(ofSize: 36, weight: .medium)
+            answerHeight.constant = 56
+            localTimeLabel.isHidden = true
+            answerTimeLabel.isHidden = true
+            sourceUnitLabel.isHidden = true
+            unitPicker.isHidden = true
+            setAccessibilityLabel("Calculator: \(calculation.expression). \(calculation.answer)")
+            toolTip = calculation.answer + (calculation.hasMoreFractionalDigits ? "… Press Right Arrow for more digits." : "")
+        case .timestamp(let calculation):
+            configureTimestamp(calculation)
+        }
     }
 
+    private func configureTimestamp(_ calculation: TimestampCalculation) {
+        let fromUnix = calculation.direction == .unixToZulu
+        let zuluSize: CGFloat = calculation.zuluTimestamp.count > 24 ? 16 : 18
+        let unixSize: CGFloat = calculation.unixValue.count > 14 ? 24 : 36
+        let unixHeight: CGFloat = unixSize == 36 ? 44 : 30
+        expressionLabel.stringValue = fromUnix ? calculation.unixValue : calculation.expression
+        expressionLabel.font = .systemFont(ofSize: fromUnix ? unixSize : zuluSize, weight: .medium)
+        expressionHeight.constant = fromUnix ? unixHeight : 24
+        answerLabel.stringValue = calculation.answer
+        answerLabel.font = .systemFont(ofSize: fromUnix ? zuluSize : unixSize, weight: .medium)
+        answerHeight.constant = fromUnix ? 24 : unixHeight
+        localTimeLabel.stringValue = calculation.localTimeHint()
+        localTimeLabel.toolTip = localTimeLabel.stringValue
+        localTimeLabel.isHidden = fromUnix
+        answerTimeLabel.stringValue = localTimeLabel.stringValue
+        answerTimeLabel.toolTip = answerTimeLabel.stringValue
+        answerTimeLabel.isHidden = !fromUnix
+        configureUnits(calculation)
+        let description = "\(calculation.unit.title): \(calculation.unixValue). Zulu timestamp: \(calculation.zuluTimestamp). Local time: \(localTimeLabel.stringValue)"
+        setAccessibilityLabel("Calculator: \(description)")
+        toolTip = description
+    }
+
+    private func configureUnits(_ calculation: TimestampCalculation) {
+        let fromUnix = calculation.direction == .unixToZulu
+        sourceUnitLabel.stringValue = calculation.unit.title
+        sourceUnitLabel.isHidden = !fromUnix
+        unitPicker.isHidden = fromUnix
+        unitPicker.selectedSegment = calculation.unit == .milliseconds ? 1 : 0
+    }
+
+    @objc private func changeTimestampUnit() {
+        onTimestampUnitChange?(unitPicker.selectedSegment == 1 ? .milliseconds : .seconds)
+    }
 }

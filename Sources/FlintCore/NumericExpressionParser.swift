@@ -112,7 +112,31 @@ private struct NumericExpressionLexer {
         let literal = String(characters[start..<position])
         guard literal.range(of: #"^(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?$"#,
                             options: .regularExpression) != nil else { throw NumericCalculationError.invalid }
-        guard let value = Decimal(string: literal, locale: Locale(identifier: "en_US_POSIX")), !value.isNaN else {
+        return try decimalValue(of: literal)
+    }
+
+    private func decimalValue(of literal: String) throws -> Decimal {
+        let locale = Locale(identifier: "en_US_POSIX")
+        if let value = Decimal(string: literal, locale: locale), !value.isNaN { return value }
+        // Decimal's literal parser rejects exponents above 127, even when shifting
+        // digits into the significand makes the value representable.
+        let parts = literal.split { $0 == "e" || $0 == "E" }
+        guard parts.count == 2, let exponent = Int(parts[1]), (128...165).contains(exponent) else {
+            throw NumericCalculationError.outOfRange
+        }
+        let coefficient = String(parts[0])
+        let point = coefficient.firstIndex(of: ".").map { coefficient.distance(from: coefficient.startIndex, to: $0) }
+            ?? coefficient.count
+        let digits = coefficient.replacingOccurrences(of: ".", with: "")
+        let integerLength = point + exponent
+        let expanded: String
+        if integerLength >= digits.count {
+            expanded = digits + String(repeating: "0", count: integerLength - digits.count)
+        } else {
+            let index = digits.index(digits.startIndex, offsetBy: integerLength)
+            expanded = String(digits[..<index]) + "." + digits[index...]
+        }
+        guard let value = Decimal(string: expanded, locale: locale), !value.isNaN else {
             throw NumericCalculationError.outOfRange
         }
         return value
