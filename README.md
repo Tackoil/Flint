@@ -6,6 +6,8 @@ The launcher uses untinted Liquid Glass on macOS 26 and later, with a frosted ma
 
 Each opening restores the launcher above the center of the display under the pointer, leaving room for the expanded results. Its top edge stays fixed while typing or clearing a search. Dragging the background does not move the launcher.
 
+By default, whenever Flint opens or regains focus, it switches the system keyboard input source to **ABC** so you can search immediately. Turn off **Switch to ABC** in **Settings → General** to keep your current input method. The setting applies immediately and remembers your choice between launches. ABC must be enabled in macOS Input Sources; if it is unavailable, Flint keeps the current input source.
+
 The launcher fades in when shown and fades out when dismissed, including with Escape, the launcher shortcut, and clicking away. Reduce Motion disables these fades.
 
 ## Run
@@ -53,7 +55,7 @@ Dialogs use untinted regular Liquid Glass on macOS 26 and later, with a standard
 
 ## Settings
 
-Settings uses a resizable sidebar layout with a compact **General** card for **Open at Login**, **Show in Menu Bar**, and **Launcher Shortcut**. The launcher shortcut uses the shared keyboard component to show each key as an outlined keycap, with a reset button beside it. Settings follows the system’s light or dark appearance.
+Settings uses a resizable sidebar layout with a compact **General** card for **Open at Login**, **Show in Menu Bar**, **Switch to ABC**, and **Launcher Shortcut**. The launcher shortcut uses the shared keyboard component to show each key as an outlined keycap, with a reset button beside it. Settings follows the system’s light or dark appearance.
 
 Turn on **Open at Login** in General to start Flint automatically when you log in. Login launches keep the launcher hidden until you use the shortcut or menu. The switch reflects macOS’s login-item status; if approval is required, use **Open Login Items…** to allow Flint in System Settings. Turn the switch off to remove the login item. **Show in Menu Bar** controls the flame icon and remembers your choice between launches. When hidden, you can still open Flint with its shortcut or by launching the app, and open Settings with Command–Comma.
 

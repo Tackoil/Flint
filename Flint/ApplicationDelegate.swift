@@ -12,7 +12,7 @@ final class ApplicationDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         installMainMenu()
         let keepsOpenOnFocusLoss = ProcessInfo.processInfo.arguments.contains("--keep-open")
-        launcher = LauncherWindowController(keepsOpenOnFocusLoss: keepsOpenOnFocusLoss)
+        launcher = LauncherWindowController(preferences: preferences, keepsOpenOnFocusLoss: keepsOpenOnFocusLoss)
         hotKey = makeHotKey(for: preferences.shortcut)
         installStatusItem()
         launcher?.onShowSettings = { [weak self] in self?.showSettings() }

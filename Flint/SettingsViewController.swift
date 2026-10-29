@@ -17,6 +17,7 @@ final class SettingsViewController: NSViewController {
     private let statusLabel = Appearance.label("", size: 12, color: .systemRed)
     private let loginSwitch = NSSwitch()
     private let menuBarSwitch = NSSwitch()
+    private let inputSourceSwitch = NSSwitch()
     private let loginStatus = Appearance.label("", size: 11, color: Appearance.muted)
     private let loginSettingsButton = NSButton(title: "Open Login Items…", target: nil, action: nil)
     private var activationObserver: NSObjectProtocol?
@@ -41,11 +42,11 @@ final class SettingsViewController: NSViewController {
 
     override func loadView() {
         view = AppearanceSurfaceView(fillColor: .windowBackgroundColor)
-        view.frame = NSRect(x: 0, y: 0, width: 860, height: 340)
+        view.frame = NSRect(x: 0, y: 0, width: 680, height: 340)
         let sidebar = makeSidebar()
         content.orientation = .vertical
         content.alignment = .leading
-        content.spacing = 22
+        content.spacing = 16
         content.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(sidebar)
         view.addSubview(content)
@@ -53,12 +54,13 @@ final class SettingsViewController: NSViewController {
             sidebar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             sidebar.topAnchor.constraint(equalTo: view.topAnchor),
             sidebar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            sidebar.widthAnchor.constraint(equalToConstant: 204),
-            content.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: 32),
-            content.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -32),
-            content.topAnchor.constraint(equalTo: view.topAnchor, constant: 62),
-            content.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -28)
+            sidebar.widthAnchor.constraint(equalToConstant: 180),
+            content.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: 24),
+            content.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
+            content.topAnchor.constraint(equalTo: view.topAnchor, constant: 54),
+            content.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -24)
         ])
+        [loginSwitch, menuBarSwitch, inputSourceSwitch].forEach { $0.controlSize = .mini }
         configureRecorder()
         configureLoginItem()
         menuBarSwitch.target = self
@@ -66,7 +68,16 @@ final class SettingsViewController: NSViewController {
         menuBarSwitch.setAccessibilityLabel("Show in Menu Bar")
         menuBarSwitch.toolTip = "Show Flint’s flame icon in the menu bar."
         menuBarSwitch.state = preferences.showInMenuBar ? .on : .off
+        configureInputSource()
         showSection(.general)
+    }
+
+    private func configureInputSource() {
+        inputSourceSwitch.target = self
+        inputSourceSwitch.action = #selector(changeInputSource)
+        inputSourceSwitch.setAccessibilityLabel("Switch to ABC")
+        inputSourceSwitch.toolTip = "Switch the input method to ABC whenever Flint opens or regains focus."
+        inputSourceSwitch.state = preferences.switchToABC ? .on : .off
     }
 
     private func configureLoginItem() {
@@ -103,6 +114,10 @@ final class SettingsViewController: NSViewController {
     @objc private func changeMenuBarVisibility() {
         preferences.showInMenuBar = menuBarSwitch.state == .on
         onMenuBarVisibilityChange(preferences.showInMenuBar)
+    }
+
+    @objc private func changeInputSource() {
+        preferences.switchToABC = inputSourceSwitch.state == .on
     }
 
     @objc private func changeLoginItem() {
@@ -197,7 +212,7 @@ final class SettingsViewController: NSViewController {
         shortcutRecorder.onShortcutChange = { [weak self] in self?.applyShortcut($0) }
         shortcutRecorder.onRecordingStateChange = onRecordingStateChange
         shortcutRecorder.onValidationError = { [weak self] in self?.showError($0) }
-        shortcutRecorder.controlSize = .large
+        shortcutRecorder.controlSize = .small
         statusLabel.maximumNumberOfLines = 3
         statusLabel.lineBreakMode = .byWordWrapping
         statusLabel.setAccessibilityIdentifier("shortcutStatus")
@@ -218,7 +233,7 @@ final class SettingsViewController: NSViewController {
             content.removeArrangedSubview($0)
             $0.removeFromSuperview()
         }
-        addContent(label(section.title, size: 25, weight: .bold, color: Appearance.text))
+        addContent(label(section.title, size: 20, weight: .bold, color: Appearance.text))
         addGeneralContent()
     }
 
@@ -230,12 +245,14 @@ final class SettingsViewController: NSViewController {
         restore.imagePosition = .imageOnly
         restore.toolTip = "Restore default shortcut (Command–Space)."
         restore.setAccessibilityLabel("Restore Default Shortcut")
-        restore.widthAnchor.constraint(equalToConstant: 28).isActive = true
-        restore.heightAnchor.constraint(equalToConstant: 28).isActive = true
+        restore.controlSize = .small
+        restore.widthAnchor.constraint(equalToConstant: 24).isActive = true
+        restore.heightAnchor.constraint(equalToConstant: 24).isActive = true
         let shortcutControls = Appearance.stack([shortcutRecorder, restore], spacing: 8)
         let settings = card([
             settingRow("Open at Login", control: loginSwitch),
             settingRow("Show in Menu Bar", control: menuBarSwitch),
+            settingRow("Switch to ABC", control: inputSourceSwitch),
             settingRow("Launcher Shortcut", control: shortcutControls)
         ])
         addContent(settings)
@@ -247,7 +264,7 @@ final class SettingsViewController: NSViewController {
     private func settingRow(_ title: String, control: NSView) -> NSView {
         paddedRow(Appearance.stack([
             label(title, size: 13, color: Appearance.text), Appearance.spacer(), control
-        ], spacing: 16), height: 48)
+        ], spacing: 12), height: 38)
     }
 
     private func label(_ text: String, size: CGFloat = 12, weight: NSFont.Weight = .regular,
@@ -277,8 +294,8 @@ final class SettingsViewController: NSViewController {
         row.addSubview(content)
         NSLayoutConstraint.activate([
             row.heightAnchor.constraint(equalToConstant: height),
-            content.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 18),
-            content.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -18),
+            content.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 10),
+            content.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -10),
             content.centerYAnchor.constraint(equalTo: row.centerYAnchor)
         ])
         return row
@@ -289,11 +306,13 @@ final class SettingsViewController: NSViewController {
             appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
                 ? NSColor(white: 0.15, alpha: 1) : NSColor(white: 0.96, alpha: 1)
         })
-        surface.layer?.cornerRadius = 14
+        surface.layer?.cornerRadius = 12
         let stack = verticalStack([], spacing: 0)
         for (index, row) in rows.enumerated() {
             if index > 0 {
-                let divider = paddedRow(Appearance.separator(), height: 1)
+                let line = AppearanceSurfaceView(fillColor: .separatorColor)
+                line.heightAnchor.constraint(equalToConstant: 0.5).isActive = true
+                let divider = paddedRow(line, height: 0.5)
                 stack.addArrangedSubview(divider)
                 divider.widthAnchor.constraint(equalTo: stack.widthAnchor).isActive = true
             }
@@ -317,6 +336,7 @@ final class SettingsViewController: NSViewController {
         refreshLoginItem()
         menuBarSwitch.state = preferences.showInMenuBar ? .on : .off
         showError(shortcutIsRegistered ? nil : "The shortcut couldn’t be registered. Try a different shortcut.")
+        inputSourceSwitch.state = preferences.switchToABC ? .on : .off
         if !shortcutIsRegistered { showSection(.general) }
     }
 

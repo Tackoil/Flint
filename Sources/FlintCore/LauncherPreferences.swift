@@ -52,6 +52,7 @@ final class LauncherPreferences {
     private let defaults: UserDefaults
     private static let shortcutKey = "launcher.shortcut"
     private static let menuBarKey = "showInMenuBar"
+    private static let switchToABCKey = "switchToABC"
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -60,6 +61,11 @@ final class LauncherPreferences {
     var showInMenuBar: Bool {
         get { defaults.object(forKey: Self.menuBarKey) as? Bool ?? true }
         set { defaults.set(newValue, forKey: Self.menuBarKey) }
+    }
+
+    var switchToABC: Bool {
+        get { defaults.object(forKey: Self.switchToABCKey) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Self.switchToABCKey) }
     }
 
     var shortcut: LauncherShortcut {

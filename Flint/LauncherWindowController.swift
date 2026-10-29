@@ -1,4 +1,5 @@
 import AppKit
+import Carbon
 
 private final class LauncherPanel: NSPanel {
     override var canBecomeKey: Bool { true }
@@ -8,6 +9,7 @@ private final class LauncherPanel: NSPanel {
 @MainActor
 final class LauncherWindowController: NSWindowController, NSWindowDelegate {
     private let applicationsController = ApplicationsViewController()
+    private let preferences: LauncherPreferences
     private let keepsOpenOnFocusLoss: Bool
     private var isSearchExpanded: Bool?
     private var placement: LauncherPlacement?
@@ -19,7 +21,8 @@ final class LauncherWindowController: NSWindowController, NSWindowDelegate {
         didSet { applicationsController.onShowSettings = onShowSettings }
     }
 
-    init(keepsOpenOnFocusLoss: Bool = false) {
+    init(preferences: LauncherPreferences = LauncherPreferences(), keepsOpenOnFocusLoss: Bool = false) {
+        self.preferences = preferences
         self.keepsOpenOnFocusLoss = keepsOpenOnFocusLoss
         let panel = LauncherPanel(
             contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
@@ -39,6 +42,8 @@ final class LauncherWindowController: NSWindowController, NSWindowDelegate {
         panel.appearance = nil
         panel.contentViewController = applicationsController
         panel.delegate = self
+        NotificationCenter.default.addObserver(self, selector: #selector(selectABCInputSource),
+                                               name: NSApplication.didBecomeActiveNotification, object: NSApp)
         applicationsController.onDismiss = { [weak self] in self?.hideLauncher() }
         applicationsController.onPresent = { [weak self] in self?.setPresented(true) }
         applicationsController.onSearchExpansionChange = { [weak self] in self?.setSearchExpanded($0) }
@@ -78,6 +83,7 @@ final class LauncherWindowController: NSWindowController, NSWindowDelegate {
             if !window.isVisible { window.alphaValue = 0 }
             NSApp.activate(ignoringOtherApps: true)
             window.makeKeyAndOrderFront(nil)
+            selectABCInputSource()
         }
         NSAnimationContext.runAnimationGroup { context in
             context.duration = Appearance.launcherVisibilityDuration(appearing: presented)
@@ -111,6 +117,19 @@ final class LauncherWindowController: NSWindowController, NSWindowDelegate {
     }
 
     func refreshApplications() { applicationsController.refreshApplications() }
+
+    func windowDidBecomeKey(_ notification: Notification) {
+        selectABCInputSource()
+    }
+
+    @objc private func selectABCInputSource() {
+        // Activation and key-window notifications can arrive in either order.
+        guard preferences.switchToABC, isPresented, NSApp.isActive, window?.isKeyWindow == true else { return }
+        let properties = [kTISPropertyInputSourceID as String: "com.apple.keylayout.ABC"] as CFDictionary
+        guard let sources = TISCreateInputSourceList(properties, false)?.takeRetainedValue() as? [TISInputSource],
+              let source = sources.first else { return }
+        TISSelectInputSource(source)
+    }
 
     func windowDidResignKey(_ notification: Notification) {
         guard !keepsOpenOnFocusLoss, !applicationsController.isPresentingDialog else { return }
