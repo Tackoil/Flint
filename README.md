@@ -45,6 +45,16 @@ The launcher opens as a compact search bar. Type to expand the application resul
 
 Flint also has a flame icon in the menu bar with **Show Flint**, **Settings…**, and **Quit Flint** actions. If another app has reserved the launcher shortcut, use the menu bar to open Flint. Clicking outside the launcher dismisses it.
 
+## Calculator
+
+Type a complete, valid calculation directly into search to see the answer. Calculator mode requires an arithmetic or percentage operation: `3 + 2` and `15%` activate it; single values such as `3`, `-3`, `(3)`, and `1e3` stay in normal search. Incomplete expressions such as `3+`, malformed input, and calculations with errors such as `1/0` also stay in normal search. Press **Return** or click **Copy Answer** on a valid calculation to copy the full, ungrouped result and dismiss Flint.
+
+Calculator mode crossfades the search icon to a calculator and animates to a compact panel while keeping the search bar in place. The expression uses mathematical symbols and spacing, with the same 36-point font size as the answer. Reduce Motion disables these animations.
+
+The calculator supports `+`, `-`, `*`, `/`, parentheses, decimals, negative numbers, powers (`^`), scientific notation (`1e3`), and postfix percentages (`15%` means `0.15`). Multiplication also accepts `×` and `x`; division accepts `÷`. Standard operator precedence applies, and powers associate from the right. For example, `(12 + 8) * 5` is `100`, `0.1 + 0.2` is `0.3`, and `200 * 15%` is `30`. Use explicit multiplication, such as `2 * (3 + 4)`.
+
+Decimal input and displayed number formatting follow the system locale. Clipboard answers use a decimal point with no grouping separators. Calculations run offline using decimal arithmetic, with bounded expression length and nesting; fractional powers use floating-point arithmetic.
+
 ## Actions
 
 Search for **Eject All Disks**, **Empty Trash**, or **Show Desktop**, then click the result or press Return. Actions appear alongside applications with an **Action** label and a **Run Action** button.
@@ -77,4 +87,4 @@ sh scripts/check-appearance.sh
 cognitive --threshold 15 Sources Flint Tests
 ```
 
-This version contains application search and launching, system actions, and shortcut settings.
+This version contains application search and launching, numeric calculations, system actions, and shortcut settings.

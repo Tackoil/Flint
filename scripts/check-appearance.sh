@@ -12,9 +12,11 @@ xcrun swiftc -swift-version 5 -parse-as-library \
     "$project_dir/Flint/LauncherHeaderFooter.swift" \
     "$project_dir/Flint/LauncherDialog.swift" \
     "$project_dir/Flint/ApplicationRow.swift" \
-    "$project_dir/Sources/FlintCore/ApplicationRecord.swift" \
-    "$project_dir/Sources/FlintCore/LauncherItem.swift" \
-    "$project_dir/Sources/FlintCore/SystemAction.swift" \
+    "$project_dir/Flint/ApplicationsViewController.swift" \
+    "$project_dir/Flint/LauncherWindowController.swift" \
+    "$project_dir/Flint/CalculatorResultView.swift" \
+    "$project_dir"/Sources/FlintCore/*.swift \
+    "$project_dir/Tests/FlintAppearanceChecks/CalculatorChecks.swift" \
     "$project_dir/Tests/FlintAppearanceChecks/LauncherDialogChecks.swift" \
     "$project_dir/Tests/FlintAppearanceChecks/main.swift" \
     -o "$appearance_check_dir/check"

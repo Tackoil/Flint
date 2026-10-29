@@ -1,5 +1,45 @@
 import AppKit
 
+private final class LauncherSearchIcon: NSView {
+    private let search = Appearance.symbol("magnifyingglass", size: 16, color: .secondaryLabelColor)
+    private let calculator = Appearance.symbol("plus.forwardslash.minus", size: 16, color: .secondaryLabelColor)
+    private var isCalculator = false
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        for icon in [search, calculator] {
+            icon.translatesAutoresizingMaskIntoConstraints = false
+            icon.wantsLayer = true
+            addSubview(icon)
+            NSLayoutConstraint.activate([
+                icon.leadingAnchor.constraint(equalTo: leadingAnchor),
+                icon.trailingAnchor.constraint(equalTo: trailingAnchor),
+                icon.topAnchor.constraint(equalTo: topAnchor),
+                icon.bottomAnchor.constraint(equalTo: bottomAnchor)
+            ])
+        }
+        search.setAccessibilityLabel("Search")
+        calculator.setAccessibilityLabel("Calculator")
+        calculator.alphaValue = 0
+        calculator.setAccessibilityHidden(true)
+    }
+
+    required init?(coder: NSCoder) { fatalError("Use init(frame:)") }
+
+    func setCalculatorMode(_ enabled: Bool) {
+        guard isCalculator != enabled else { return }
+        isCalculator = enabled
+        search.setAccessibilityHidden(enabled)
+        calculator.setAccessibilityHidden(!enabled)
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = Appearance.launcherTransitionDuration(for: window)
+            context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            search.animator().alphaValue = enabled ? 0 : 1
+            calculator.animator().alphaValue = enabled ? 1 : 0
+        }
+    }
+}
+
 private final class LauncherFooterView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? {
         let hit = super.hitTest(point)
@@ -57,27 +97,30 @@ final class LauncherHeaderFooter {
     let searchField = NSTextField()
     let openButton: NSButton = LauncherOpenButton()
     let settingsButton = Appearance.button("")
+    private let searchIcon = LauncherSearchIcon()
+    private let navigation = Appearance.stack([
+        Appearance.label("Navigate", size: 12, color: .labelColor), KeyboardHintView(.upArrow), KeyboardHintView(.downArrow)
+    ], spacing: 4)
 
     func searchBar() -> NSView {
-        let icon = Appearance.symbol("magnifyingglass", size: 16, color: .secondaryLabelColor)
         NSLayoutConstraint.activate([
-            icon.widthAnchor.constraint(equalToConstant: 20),
-            icon.heightAnchor.constraint(equalToConstant: 20)
+            searchIcon.widthAnchor.constraint(equalToConstant: 20),
+            searchIcon.heightAnchor.constraint(equalToConstant: 20)
         ])
         let searchFont = NSFont.systemFont(ofSize: 18)
         searchField.font = searchFont
         searchField.placeholderAttributedString = NSAttributedString(
-            string: "Search applications and actions…",
+            string: "Search applications, actions, or calculate…",
             attributes: [.font: searchFont, .foregroundColor: NSColor.secondaryLabelColor]
         )
         searchField.textColor = .labelColor
         searchField.isBordered = false
         searchField.drawsBackground = false
         searchField.focusRingType = .none
-        searchField.setAccessibilityLabel("Search applications and actions")
+        searchField.setAccessibilityLabel("Search applications, actions, or calculate")
         searchField.setContentHuggingPriority(.defaultLow, for: .horizontal)
         searchField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        return searchBarLayout(icon: icon)
+        return searchBarLayout(icon: searchIcon)
     }
 
     private func searchBarLayout(icon: NSView) -> NSView {
@@ -98,9 +141,6 @@ final class LauncherHeaderFooter {
     }
 
     func footer() -> NSView {
-        let navigation = Appearance.stack([
-            Appearance.label("Navigate", size: 12, color: .labelColor), KeyboardHintView(.upArrow), KeyboardHintView(.downArrow)
-        ], spacing: 4)
         navigation.setAccessibilityLabel("Use the Up and Down arrow keys to navigate")
         let actions = Appearance.actionGroup(content: Appearance.stack([openButton, navigation], spacing: 16))
         settingsButton.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: "Settings")?
@@ -124,6 +164,11 @@ final class LauncherHeaderFooter {
 
     func updateActionTitle(_ title: String) {
         (openButton as? LauncherOpenButton)?.updateTitle(title)
+    }
+
+    func setCalculatorMode(_ isCalculator: Bool) {
+        navigation.isHidden = isCalculator
+        searchIcon.setCalculatorMode(isCalculator)
     }
 
     var isReturnKeyPressed: Bool { (openButton as? LauncherOpenButton)?.isReturnKeyPressed == true }

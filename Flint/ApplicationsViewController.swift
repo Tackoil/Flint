@@ -25,12 +25,17 @@ private final class LauncherResultsScrollView: NSScrollView {
 final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     var onDismiss: (() -> Void)?
     var onShowSettings: (() -> Void)?
-    var onSearchExpansionChange: ((Bool) -> Void)?
+    var onDisplayModeChange: ((LauncherDisplayMode) -> Void)?
     private let chrome = LauncherHeaderFooter()
     private let launcherContent = NSView(frame: NSRect(x: 0, y: 0, width: 760, height: 560))
     private let resultsContainer = NSStackView()
+    private var footerView: NSView?
+    private lazy var resultsHeightConstraint = resultsContainer.heightAnchor.constraint(
+        equalToConstant: LauncherDisplayMode.results.height - LauncherHeaderFooter.searchBarHeight)
     private let tableView = NSTableView()
     private let scrollView = LauncherResultsScrollView()
+    private let calculatorView = CalculatorResultView()
+    private var calculation: NumericCalculation?
     private let statusLabel = Appearance.label("Finding your applications…", size: 14)
     private let iconCache = NSCache<NSString, NSImage>()
     private var applications: [ApplicationRecord] = []
@@ -42,6 +47,11 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     private var isSearchExpanded = false
     private var dialog: LauncherDialogView?
     var isPresentingDialog: Bool { dialog != nil }
+    var displayMode: LauncherDisplayMode {
+        if isPresentingDialog { return .results }
+        if calculation != nil { return .calculator }
+        return isSearchExpanded ? .results : .collapsed
+    }
 
     override func loadView() {
         view = Appearance.launcherSurface(content: launcherContent)
@@ -95,7 +105,12 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         statusLabel.maximumNumberOfLines = 3
         list.addSubview(scrollView)
         list.addSubview(statusLabel)
+        calculatorView.translatesAutoresizingMaskIntoConstraints = false
+        calculatorView.isHidden = true
+        list.addSubview(calculatorView)
         let footer = chrome.footer()
+        footer.wantsLayer = true
+        footerView = footer
         footer.translatesAutoresizingMaskIntoConstraints = false
         list.addSubview(footer)
         NSLayoutConstraint.activate([
@@ -103,6 +118,10 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
             scrollView.trailingAnchor.constraint(equalTo: list.trailingAnchor),
             scrollView.topAnchor.constraint(equalTo: list.topAnchor),
             scrollView.bottomAnchor.constraint(equalTo: list.bottomAnchor),
+            calculatorView.leadingAnchor.constraint(equalTo: list.leadingAnchor),
+            calculatorView.trailingAnchor.constraint(equalTo: list.trailingAnchor),
+            calculatorView.topAnchor.constraint(equalTo: list.topAnchor),
+            calculatorView.bottomAnchor.constraint(equalTo: footer.topAnchor),
             statusLabel.centerXAnchor.constraint(equalTo: list.centerXAnchor),
             statusLabel.centerYAnchor.constraint(equalTo: list.centerYAnchor),
             statusLabel.widthAnchor.constraint(lessThanOrEqualTo: list.widthAnchor, constant: -60),
@@ -131,7 +150,8 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
             resultsContainer.leadingAnchor.constraint(equalTo: launcherContent.leadingAnchor),
             resultsContainer.trailingAnchor.constraint(equalTo: launcherContent.trailingAnchor),
             resultsContainer.topAnchor.constraint(equalTo: searchBar.bottomAnchor),
-            resultsContainer.heightAnchor.constraint(equalToConstant: 560 - LauncherHeaderFooter.searchBarHeight)
+            list.widthAnchor.constraint(equalTo: resultsContainer.widthAnchor),
+            resultsHeightConstraint
         ])
     }
 
@@ -161,8 +181,13 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         let query = chrome.searchField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         let isExpanded = !query.isEmpty
         let items = applications.map(LauncherItem.application) + SystemAction.allCases.map(LauncherItem.action)
-        results = isExpanded ? ApplicationSearch.filter(items, query: query) : []
-        chrome.openButton.isEnabled = !results.isEmpty && !isOpening
+        calculation = NumericCalculator.evaluate(query)
+        results = isExpanded && calculation == nil ? ApplicationSearch.filter(items, query: query) : []
+        calculatorView.isHidden = calculation == nil
+        scrollView.isHidden = calculation != nil
+        if let calculation { calculatorView.configure(calculation) }
+        chrome.setCalculatorMode(calculation != nil)
+        chrome.openButton.isEnabled = (calculation?.value != nil || !results.isEmpty) && !isOpening
         updateEmptyState(hasQuery: isExpanded)
         tableView.reloadData()
         if !results.isEmpty {
@@ -171,7 +196,41 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         }
         updateSelection()
         updateResultsVisibility(isExpanded)
-        onSearchExpansionChange?(isExpanded || isPresentingDialog)
+        updateResultsHeight()
+        onDisplayModeChange?(displayMode)
+    }
+
+    private func updateResultsHeight() {
+        guard displayMode != .collapsed else { return }
+        let height = displayMode.height - LauncherHeaderFooter.searchBarHeight
+        guard resultsHeightConstraint.constant != height else { return }
+        let footerPosition = displayedFooterPosition()
+        // Keep the result rows stationary. Animate only the outer viewport and footer
+        // so resizing cannot move the rows above the search bar.
+        resultsHeightConstraint.constant = height
+        launcherContent.layoutSubtreeIfNeeded()
+        animateFooter(from: footerPosition)
+    }
+
+    private func displayedFooterPosition() -> CGPoint? {
+        guard let layer = footerView?.layer, let reference = launcherContent.layer else { return nil }
+        let displayed = layer.presentation() ?? layer
+        guard let parent = displayed.superlayer else { return nil }
+        return (reference.presentation() ?? reference).convert(displayed.position, from: parent)
+    }
+
+    private func animateFooter(from position: CGPoint?) {
+        guard let position, let layer = footerView?.layer, let parent = layer.superlayer,
+              let reference = launcherContent.layer else { return }
+        layer.removeAnimation(forKey: "launcherFooterPosition")
+        let duration = Appearance.launcherTransitionDuration(for: view.window)
+        guard duration > 0, (view.window?.frame.height ?? 0) > LauncherHeaderFooter.searchBarHeight else { return }
+        let animation = CABasicAnimation(keyPath: "position")
+        animation.fromValue = parent.convert(position, from: reference)
+        animation.toValue = layer.position
+        animation.duration = duration
+        animation.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        layer.add(animation, forKey: "launcherFooterPosition")
     }
 
     private func updateResultsVisibility(_ isExpanded: Bool) {
@@ -192,17 +251,14 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     }
 
     private func updateEmptyState(hasQuery: Bool) {
-        statusLabel.isHidden = !results.isEmpty || !hasQuery
-        if isLoading {
-            statusLabel.stringValue = "Finding your applications…"
-        } else {
-            statusLabel.stringValue = "No applications or actions found\nTry a different name."
-        }
+        statusLabel.isHidden = calculation != nil || !results.isEmpty || !hasQuery
+        statusLabel.stringValue = isLoading ? "Finding your applications…"
+            : "No applications or actions found\nTry a different name."
     }
 
     private func updateSelection() {
         let row = tableView.selectedRow
-        chrome.updateActionTitle(results.indices.contains(row) ? results[row].buttonTitle : "Open")
+        chrome.updateActionTitle(calculation != nil ? "Copy Answer" : selectedActionTitle(row: row))
         let visible = tableView.rows(in: tableView.visibleRect)
         guard visible.location != NSNotFound else { return }
         for index in visible.location..<NSMaxRange(visible) {
@@ -217,15 +273,33 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     }
 
     @objc private func openSelectedApplication() {
+        guard !isOpening, !isPresentingDialog else { return }
+        if calculation != nil {
+            copyCalculationAnswer(to: .general)
+            return
+        }
         let row = tableView.selectedRow
-        guard !isOpening, !isPresentingDialog, results.indices.contains(row) else { return }
-        let item = results[row]
-        switch item {
-        case .application(let app):
+        guard results.indices.contains(row) else { return }
+        activate(results[row])
+    }
+
+    private func activate(_ item: LauncherItem) {
+        if case .application(let app) = item {
             openApplication(app)
-        case .action(let action):
+        } else if case .action(let action) = item {
             runAction(action)
         }
+    }
+
+    func copyCalculationAnswer(to pasteboard: NSPasteboard) {
+        guard let answer = calculation?.answer else { return }
+        pasteboard.clearContents()
+        pasteboard.setString(answer, forType: .string)
+        onDismiss?()
+    }
+
+    private func selectedActionTitle(row: Int) -> String {
+        results.indices.contains(row) ? results[row].buttonTitle : "Open"
     }
 
     private func openApplication(_ app: ApplicationRecord) {
@@ -288,13 +362,13 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     private func presentDialog(title: String, message: String, buttonTitles: [String],
                                onResponse: @escaping (Int) -> Void) {
         guard dialog == nil else { return }
-        onSearchExpansionChange?(true)
+        onDisplayModeChange?(.results)
         let overlay = LauncherDialogView(title: title, message: message, buttonTitles: buttonTitles) { [weak self] response in
             guard let self else { return }
             self.dialog = nil
             self.launcherContent.setAccessibilityHidden(false)
             self.view.window?.makeFirstResponder(self.chrome.searchField)
-            self.onSearchExpansionChange?(self.isSearchExpanded)
+            self.onDisplayModeChange?(self.displayMode)
             onResponse(response)
         }
         dialog = overlay

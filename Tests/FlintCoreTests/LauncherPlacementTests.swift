@@ -15,7 +15,7 @@ struct LauncherPlacementTests {
     @Test func reversingAtIntermediateHeightsNeverMovesTheSearchAnchor() {
         let placement = LauncherPlacement(visibleFrame: CGRect(x: 0, y: 0, width: 1440, height: 900),
                                           expandedSize: expandedSize)
-        for height: CGFloat in [56, 56.5, 200.25, 560, 320.5, 56, 120.75, 560, 56] {
+        for height: CGFloat in [56, 56.5, 200.25, 232, 560, 320.5, 232, 56, 120.75, 560, 56] {
             let frame = placement.frame(height: height)
             #expect(frame.minX == 340)
             #expect(frame.maxY == 730)

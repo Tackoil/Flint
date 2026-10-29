@@ -11,7 +11,7 @@ final class LauncherWindowController: NSWindowController, NSWindowDelegate {
     private let applicationsController = ApplicationsViewController()
     private let preferences: LauncherPreferences
     private let keepsOpenOnFocusLoss: Bool
-    private var isSearchExpanded: Bool?
+    private var displayMode: LauncherDisplayMode?
     private var placement: LauncherPlacement?
     private var allowsResizeAnimation = false
     private var transitionGeneration = 0
@@ -45,7 +45,7 @@ final class LauncherWindowController: NSWindowController, NSWindowDelegate {
         NotificationCenter.default.addObserver(self, selector: #selector(selectABCInputSource),
                                                name: NSApplication.didBecomeActiveNotification, object: NSApp)
         applicationsController.onDismiss = { [weak self] in self?.hideLauncher() }
-        applicationsController.onSearchExpansionChange = { [weak self] in self?.setSearchExpanded($0) }
+        applicationsController.onDisplayModeChange = { [weak self] in self?.setDisplayMode($0) }
     }
 
     required init?(coder: NSCoder) { fatalError("Use init()") }
@@ -60,7 +60,7 @@ final class LauncherWindowController: NSWindowController, NSWindowDelegate {
         allowsResizeAnimation = false
         placement = LauncherPlacement(visibleFrame: screen.visibleFrame,
                                       expandedSize: NSSize(width: 760, height: 560))
-        isSearchExpanded = nil
+        displayMode = nil
         applicationsController.resetSearch()
         setPresented(true)
         allowsResizeAnimation = true
@@ -96,16 +96,16 @@ final class LauncherWindowController: NSWindowController, NSWindowDelegate {
         }
     }
 
-    private func setSearchExpanded(_ isExpanded: Bool) {
-        guard let window, let placement, self.isSearchExpanded != isExpanded else { return }
-        self.isSearchExpanded = isExpanded
+    private func setDisplayMode(_ mode: LauncherDisplayMode) {
+        guard let window, let placement, displayMode != mode else { return }
+        displayMode = mode
         transitionGeneration += 1
         let generation = transitionGeneration
-        let height: CGFloat = isExpanded ? 560 : LauncherHeaderFooter.searchBarHeight
+        let height = mode.height
         let frame = placement.frame(height: height)
         let duration = allowsResizeAnimation ? Appearance.launcherTransitionDuration(for: window) : 0
         // Keep the backing window still while the viewport reveals or clips the glass.
-        if isExpanded || duration == 0 {
+        if height > window.frame.height || duration == 0 {
             window.setFrame(frame, display: true)
             window.contentView?.layoutSubtreeIfNeeded()
         }

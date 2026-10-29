@@ -20,7 +20,7 @@ struct AppearanceChecks {
         surface.layoutSubtreeIfNeeded()
         let initialMaterialFrame = material.frame
         let initialSearchFrame = surface.convert(header.searchField.bounds, from: header.searchField)
-        for height: CGFloat in [56, 56.5, 120.25, 200.5, 559.75, 560, 320.25, 120, 56] {
+        for height: CGFloat in [56, 56.5, 120.25, 200.5, 232, 559.75, 560, 320.25, 120, 56] {
             surface.setFrameSize(NSSize(width: 760, height: height))
             surface.needsLayout = true
             surface.layoutSubtreeIfNeeded()
@@ -31,7 +31,7 @@ struct AppearanceChecks {
         }
         surface.setFrameSize(NSSize(width: 760, height: 560))
         surface.layoutSubtreeIfNeeded()
-        for height: CGFloat in [56, 120.25, 200.5, 560, 320.25, 56] {
+        for height: CGFloat in [56, 120.25, 232, 560, 232, 320.25, 56] {
             Appearance.revealLauncher(height: height, on: surface, duration: 0) {}
             precondition(surface.frame.height == 560)
             precondition(viewport.frame.height == height)
@@ -52,12 +52,14 @@ struct AppearanceChecks {
         chrome.updateLayer()
         let dark = NSColor(cgColor: chrome.layer!.backgroundColor!)!.usingColorSpace(.genericRGB)!
         precondition(light.redComponent < dark.redComponent)
-        print("PASS: glass and search field stay stationary across nine fractional viewport heights")
+        print("PASS: glass and search field stay stationary across collapsed, calculator, and expanded viewport heights")
         print("PASS: the reveal changes without resizing the window content or moving the search field")
         print("PASS: untinted native glass and inherited appearance")
         print("PASS: layer colors resolve for both light and dark appearances")
         checkLauncherDialog()
         checkKeyboardHintFeedback()
         checkLauncherRowIcons()
+        checkCalculatorIntegration()
+        checkCalculatorToSearchTransitions()
     }
 }

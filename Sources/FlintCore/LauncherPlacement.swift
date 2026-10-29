@@ -1,5 +1,17 @@
 import CoreGraphics
 
+enum LauncherDisplayMode {
+    case collapsed, calculator, results
+
+    var height: CGFloat {
+        switch self {
+        case .collapsed: return 56
+        case .calculator: return 232
+        case .results: return 560
+        }
+    }
+}
+
 struct LauncherPlacement {
     let expandedFrame: CGRect
 
