@@ -40,8 +40,8 @@ The launcher opens as a compact search bar. Type to expand the application resul
 | Command–Space | Show or hide Flint |
 | Up / Down | Select the previous / next result |
 | Return | Open the selected app or run the selected action |
-| Tab | Enter the selected Translate action; otherwise keep focus in search |
-| Escape | Return from translation to search, or hide Flint |
+| Tab | Put the selected calculation or conversion result into search, or enter the selected Translate action |
+| Escape | Restore the input before Use Result, return from translation to search, or hide Flint |
 | Command–R | Refresh installed applications |
 
 Flint also has a flame icon in the menu bar with **Show Flint**, **Settings…**, and **Quit Flint** actions. If another app has reserved the launcher shortcut, use the menu bar to open Flint. Clicking outside the launcher dismisses it.
@@ -63,6 +63,10 @@ Press **Escape**, click **Exit** beside its Escape key hint in the footer action
 API reference: [DeepSeek Chat Completions](https://api-docs.deepseek.com/api/create-chat-completion/).
 
 ## Calculator
+
+Press **Tab** or click **Use Result** in the action group on an arithmetic, timestamp, number-base, or color result to replace the search input with its selected output. Flint stays open with the cursor at the end so you can continue typing. Tab uses the same value as copying, including the selected rounding precision, timestamp unit, number base, or color format, without numeric grouping separators or the continuation marker. The new input is evaluated normally, and the clipboard is unchanged.
+
+Press **Escape** or click **Back** in the action group to restore the input from before **Use Result**, including its precision, output format, and editing mode. Each Escape steps back through one result substitution, even after further typing. When no earlier input remains, Escape dismisses Flint. Reopening Flint or entering translation clears this history; using a result identical to the input adds no history entry.
 
 Type a complete, valid calculation directly into search to see the answer. Arithmetic requires an operation, such as `3 + 2` or `15%`. Non-negative integers such as `3` and `1710513000` convert from Unix seconds to Zulu timestamps; values such as `0.5`, `-3`, `(3)`, and `1e3` stay in normal search. Incomplete expressions such as `3+`, malformed input, and calculations with errors such as `1/0` also stay in normal search. Press **Return** or click **Copy Answer** on a valid calculation to copy the full, ungrouped result and dismiss Flint.
 

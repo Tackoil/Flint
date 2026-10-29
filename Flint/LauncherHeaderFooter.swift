@@ -135,6 +135,8 @@ private final class LauncherFooterView: NSView {
 private final class LauncherOpenButton: NSButton {
     private let content = KeyboardHintView(.returnKey, label: "Open Application")
     var isReturnKeyPressed: Bool { content.hint == .returnKey && content.isKeyPressed }
+    var isTabKeyPressed: Bool { content.hint == .tab && content.isKeyPressed }
+    var isEscapeKeyPressed: Bool { content.hint == .escape && content.isKeyPressed }
 
     func updateTitle(_ title: String, hint: KeyboardHint) {
         if content.hint != hint { content.hint = hint }
@@ -227,6 +229,8 @@ final class LauncherHeaderFooter {
     static let searchBarHeight: CGFloat = LauncherLayout.cornerRadius * 2
     let searchField: NSTextField = LauncherSearchField()
     let openButton: NSButton = LauncherOpenButton()
+    let useResultButton: NSButton = LauncherOpenButton()
+    let resultBackButton: NSButton = LauncherOpenButton()
     let settingsButton = Appearance.button("")
     let roundingModeButton: NSButton = LauncherModeButton()
     let colorModeButton: NSButton = LauncherModeButton()
@@ -304,11 +308,15 @@ final class LauncherHeaderFooter {
         numberBaseControls.isHidden = true
         numberBaseModeButton.isHidden = true
         translationExitButton.isHidden = true
+        useResultButton.isHidden = true
+        resultBackButton.isHidden = true
+        (resultBackButton as? LauncherOpenButton)?.updateTitle("Back", hint: .escape)
+        (useResultButton as? LauncherOpenButton)?.updateTitle("Use Result", hint: .tab)
         (translationExitButton as? LauncherOpenButton)?.updateTitle("Exit", hint: .escape)
         translationExitButton.setAccessibilityLabel("Exit translation mode")
         translationExitButton.toolTip = "Return to search (Escape)"
         let actions = Appearance.actionGroup(content: Appearance.stack(
-            [openButton, translationExitButton, navigation, precisionControls, roundingModeButton, timestampUnitHint,
+            [openButton, useResultButton, resultBackButton, translationExitButton, navigation, precisionControls, roundingModeButton, timestampUnitHint,
              colorFormatControls, colorModeButton, numberBaseControls, numberBaseModeButton], spacing: 16))
         actions.wantsLayer = true
         actionGroup = actions as? ActionGroupView
@@ -342,6 +350,7 @@ final class LauncherHeaderFooter {
     func setCalculatorMode(_ isCalculator: Bool, isColor: Bool = false, isTranslation: Bool = false) {
         animateActionLayout {
             navigation.isHidden = isCalculator || isTranslation
+            useResultButton.isHidden = !isCalculator
         }
         searchIcon.setCalculatorMode(isCalculator, isColor: isColor, isTranslation: isTranslation)
     }
@@ -378,6 +387,12 @@ final class LauncherHeaderFooter {
     }
 
     var isReturnKeyPressed: Bool { (openButton as? LauncherOpenButton)?.isReturnKeyPressed == true }
+    var isResultTabKeyPressed: Bool { (useResultButton as? LauncherOpenButton)?.isTabKeyPressed == true }
+    var isResultBackKeyPressed: Bool { (resultBackButton as? LauncherOpenButton)?.isEscapeKeyPressed == true }
+
+    func setResultBackAvailable(_ available: Bool) {
+        animateActionLayout { resultBackButton.isHidden = !available }
+    }
 
     func performAfterKeyRelease(_ key: KeyboardHint, action: @escaping () -> Void) {
         let hints = [

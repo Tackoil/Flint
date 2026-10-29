@@ -23,6 +23,17 @@ private final class LauncherResultsScrollView: NSScrollView {
 
 @MainActor
 final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
+    private struct ResultInput {
+        let query: String
+        let calculation: CalculatorResult
+        let colorFormat: ColorConversion.Format?
+        let numberBaseFormat: NumberBaseConversion.Format?
+        let timestampUnit: TimestampCalculation.Unit
+        let isRoundingEnabled: Bool
+        let isColorSwitchingEnabled: Bool
+        let isNumberBaseSwitchingEnabled: Bool
+    }
+
     var onDismiss: (() -> Void)?
     var onShowSettings: (() -> Void)?
     var onShowTranslationSettings: (() -> Void)?
@@ -41,6 +52,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     let translationSession: TranslationSession
     private(set) var isTranslationMode = false
     private var calculation: CalculatorResult?
+    private var resultInputs: [ResultInput] = []
     private var colorOutputFormat: ColorConversion.Format?
     private var numberBaseOutputFormat: NumberBaseConversion.Format?
     private var isNumberBaseSwitchingEnabled = true
@@ -83,6 +95,10 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         chrome.openButton.target = self
         chrome.openButton.action = #selector(openSelectedApplication)
         chrome.openButton.isEnabled = false
+        chrome.useResultButton.target = self
+        chrome.useResultButton.action = #selector(useCalculationResult)
+        chrome.resultBackButton.target = self
+        chrome.resultBackButton.action = #selector(restorePreviousInput)
         chrome.settingsButton.target = self
         chrome.settingsButton.action = #selector(showSettings)
         chrome.roundingModeButton.target = self
@@ -206,6 +222,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
 
     func resetSearch() {
         _ = view
+        resultInputs.removeAll()
         isRoundingEnabled = true
         colorOutputFormat = nil
         numberBaseOutputFormat = nil
@@ -270,6 +287,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         chrome.setNumberBaseSwitching(numberBaseConversion?.format, isEnabled: isNumberBaseSwitchingEnabled)
         chrome.updatePrecision(calculation?.decimalPlaceCount, isRounding: isRoundingEnabled)
         chrome.setTimestampUnitSwitching(canSwitchTimestampUnit ? timestampOutputUnit : nil)
+        chrome.setResultBackAvailable(!resultInputs.isEmpty && !isTranslationMode)
         chrome.openButton.isEnabled = (calculation != nil || !results.isEmpty) && !isOpening
         if isTranslationMode {
             chrome.openButton.isEnabled = translationSession.state.canPerformAction
@@ -416,6 +434,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     }
 
     private func enterTranslationMode() {
+        resultInputs.removeAll()
         isTranslationMode = true
         chrome.searchField.stringValue = ""
         applyQuery()
@@ -531,6 +550,8 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
         animateTabFeedback(for: commandSelector, editor: textView)
+        if handleResultBackCommand(commandSelector) { return true }
+        if handleResultInsertionCommand(commandSelector, textView: textView) { return true }
         if handleTranslationCommand(commandSelector) { return true }
         if handleNumberBaseModeCommand(commandSelector) { return true }
         if handleNumberBaseFormatCommand(commandSelector) { return true }
@@ -557,6 +578,56 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
               NSApp.currentEvent?.isARepeat != true,
               NSApp.currentEvent?.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty != false else { return }
         Appearance.pulseLauncherGlow(on: view)
+    }
+
+    private func handleResultInsertionCommand(_ selector: Selector, textView: NSTextView) -> Bool {
+        guard selector == #selector(NSResponder.insertTab(_:)), !isOpening, !isPresentingDialog,
+              !textView.hasMarkedText(),
+              NSApp.currentEvent?.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty != false,
+              calculation != nil else { return false }
+        if !chrome.isResultTabKeyPressed { insertCalculationResult(in: textView) }
+        return true
+    }
+
+    @objc private func useCalculationResult() {
+        guard !isOpening, !isPresentingDialog, calculation != nil else { return }
+        view.window?.makeFirstResponder(chrome.searchField)
+        guard let editor = chrome.searchField.currentEditor() as? NSTextView else { return }
+        insertCalculationResult(in: editor)
+    }
+
+    private func insertCalculationResult(in editor: NSTextView) {
+        guard !isOpening, !isPresentingDialog, !editor.hasMarkedText(), let calculation else { return }
+        if editor.string != calculation.answer {
+            resultInputs.append(ResultInput(query: editor.string, calculation: calculation,
+                                           colorFormat: colorOutputFormat, numberBaseFormat: numberBaseOutputFormat,
+                                           timestampUnit: timestampOutputUnit, isRoundingEnabled: isRoundingEnabled,
+                                           isColorSwitchingEnabled: isColorSwitchingEnabled,
+                                           isNumberBaseSwitchingEnabled: isNumberBaseSwitchingEnabled))
+        }
+        editor.insertText(calculation.answer, replacementRange: NSRange(location: 0, length: editor.string.utf16.count))
+    }
+
+    private func handleResultBackCommand(_ selector: Selector) -> Bool {
+        guard selector == #selector(NSResponder.cancelOperation(_:)), !resultInputs.isEmpty,
+              !isTranslationMode, !isOpening, !isPresentingDialog else { return false }
+        if !chrome.isResultBackKeyPressed { restorePreviousInput() }
+        return true
+    }
+
+    @objc private func restorePreviousInput() {
+        guard !isTranslationMode, !isOpening, !isPresentingDialog, !resultInputs.isEmpty else { return }
+        view.window?.makeFirstResponder(chrome.searchField)
+        guard let editor = chrome.searchField.currentEditor() as? NSTextView, !editor.hasMarkedText(),
+              let previous = resultInputs.popLast() else { return }
+        calculation = previous.calculation
+        colorOutputFormat = previous.colorFormat
+        numberBaseOutputFormat = previous.numberBaseFormat
+        timestampOutputUnit = previous.timestampUnit
+        isRoundingEnabled = previous.isRoundingEnabled
+        isColorSwitchingEnabled = previous.isColorSwitchingEnabled
+        isNumberBaseSwitchingEnabled = previous.isNumberBaseSwitchingEnabled
+        editor.insertText(previous.query, replacementRange: NSRange(location: 0, length: editor.string.utf16.count))
     }
 
     private func handleTranslationCommand(_ selector: Selector) -> Bool {

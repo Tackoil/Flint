@@ -59,6 +59,248 @@ func checkCalculatorIntegration() {
     precondition(mode == .collapsed && result.isHidden && !copy.isEnabled)
     precondition(calculatorIcon.alphaValue == 0 && searchIcon.alphaValue == 1)
     print("PASS: compact calculator, math typography, matching font sizes, icon changes, copying, errors, and search transitions")
+    checkResultInsertion()
+    checkResultActionGroup()
+    checkResultRestoration()
+}
+
+@MainActor
+private func checkResultActionGroup() {
+    let controller = ApplicationsViewController()
+    let window = AppearanceCheckWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
+                                       styleMask: [.borderless], backing: .buffered, defer: false)
+    window.contentViewController = controller
+    AppearanceCheckWindows.show(window)
+    defer { window.orderOut(nil) }
+    controller.resetSearch()
+    let views = calculatorDescendants(of: controller.view)
+    let search = views.compactMap { $0 as? NSTextField }.first { $0.isEditable }!
+    let button = views.compactMap { $0 as? NSButton }.first { $0.action == NSSelectorFromString("useCalculationResult") }!
+    let copy = views.compactMap { $0 as? NSButton }.first { $0.action == NSSelectorFromString("openSelectedApplication") }!
+    let hint = calculatorDescendants(of: button).compactMap { $0 as? KeyboardHintView }.first!
+    precondition(button.isHiddenOrHasHiddenAncestor && button.superview === copy.superview)
+    precondition(button.accessibilityLabel() == "Use Result" && hint.hint == .tab)
+    for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+        controller.view.appearance = NSAppearance(named: appearance)
+        for (query, expected) in [("1/3", "0.3333333333"), ("1710513000", "2024-03-15T14:30:00Z"),
+                                  ("0xff", "255"), ("#ff0000", "rgb(255 0 0)")] {
+            controller.resetSearch()
+            search.stringValue = query
+            controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
+            precondition(!button.isHiddenOrHasHiddenAncestor && button.isEnabled)
+            checkResultActionLayout(controller.view, name: "\(name)-\(query.count)")
+            button.performClick(nil)
+            let editor = search.currentEditor() as! NSTextView
+            precondition(search.stringValue == expected && window.firstResponder === editor)
+            precondition(editor.selectedRange() == NSRange(location: expected.utf16.count, length: 0))
+        }
+    }
+    checkResultActionKeyRelease(controller, search: search, hint: hint, window: window)
+    for query in ["Finder", "3+", "Translate", ""] {
+        search.stringValue = query
+        controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
+        precondition(button.isHiddenOrHasHiddenAncestor)
+    }
+    search.stringValue = "Translate"
+    controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
+    (search.currentEditor() as! NSTextView).doCommand(by: #selector(NSResponder.insertTab(_:)))
+    precondition(controller.isTranslationMode && button.isHiddenOrHasHiddenAncestor)
+    print("PASS: Use Result Tab button shares the action group, fits in light/dark modes, inserts all result types on click, and hides outside results")
+}
+
+@MainActor
+private func checkResultActionKeyRelease(_ controller: ApplicationsViewController, search: NSTextField,
+                                         hint: KeyboardHintView, window: NSWindow) {
+    controller.resetSearch()
+    search.stringValue = "2+2"
+    controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
+    let editor = search.currentEditor() as! NSTextView
+    let down = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
+                               context: nil, characters: "\t", charactersIgnoringModifiers: "\t", isARepeat: false, keyCode: 48)!
+    let up = NSEvent.keyEvent(with: .keyUp, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
+                             context: nil, characters: "\t", charactersIgnoringModifiers: "\t", isARepeat: false, keyCode: 48)!
+    hint.handleKeyEvent(down)
+    for _ in 0..<2 { editor.doCommand(by: #selector(NSResponder.insertTab(_:))) }
+    precondition(search.stringValue == "2+2" && hint.isKeyPressed)
+    hint.handleKeyEvent(up)
+    precondition(search.stringValue == "4" && !hint.isKeyPressed)
+    hint.handleKeyEvent(up)
+    precondition(search.stringValue == "4", "One Tab press must insert only once")
+    hint.handleKeyEvent(down)
+    editor.doCommand(by: #selector(NSResponder.insertTab(_:)))
+    NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: window)
+    hint.handleKeyEvent(up)
+    precondition(search.stringValue == "4", "Losing focus must cancel the Tab action")
+    print("PASS: Use Result responds once on Tab release, preserves pressed feedback, and cancels on focus loss")
+}
+
+@MainActor
+private func checkResultActionLayout(_ view: NSView, name: String) {
+    Appearance.revealLauncher(height: LauncherDisplayMode.calculator.height, on: view, duration: 0) {}
+    view.layoutSubtreeIfNeeded()
+    RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+    let views = calculatorDescendants(of: view)
+    let actions = views.compactMap { $0 as? ActionGroupView }.first!
+    for button in calculatorDescendants(of: actions).compactMap({ $0 as? NSButton }).filter({ !$0.isHiddenOrHasHiddenAncestor }) {
+        precondition(actions.surface.frame.contains(actions.convert(button.bounds, from: button)), "Action button must fit in the glass: \(button.accessibilityLabel() ?? "")")
+    }
+    guard let directory = ProcessInfo.processInfo.environment["FLINT_CALCULATOR_PREVIEW_DIR"] else { return }
+    let bounds = NSRect(x: 0, y: 0, width: view.bounds.width, height: LauncherDisplayMode.calculator.height)
+    let bitmap = view.bitmapImageRepForCachingDisplay(in: bounds)!
+    view.cacheDisplay(in: bounds, to: bitmap)
+    try! bitmap.representation(using: .png, properties: [:])!
+        .write(to: URL(fileURLWithPath: directory).appendingPathComponent("use-result-\(name).png"))
+}
+
+@MainActor
+private func checkResultInsertion() {
+    let controller = ApplicationsViewController()
+    let window = AppearanceCheckWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
+                                       styleMask: [.borderless], backing: .buffered, defer: false)
+    window.contentViewController = controller
+    let search = calculatorDescendants(of: controller.view).compactMap { $0 as? NSTextField }.first { $0.isEditable }!
+    AppearanceCheckWindows.show(window)
+    defer { window.orderOut(nil) }
+    var dismissed = false
+    controller.onDismiss = { dismissed = true }
+    let clipboardChanges = NSPasteboard.general.changeCount
+    let left = #selector(NSResponder.moveLeft(_:))
+    let right = #selector(NSResponder.moveRight(_:))
+    let up = #selector(NSResponder.moveUp(_:))
+    let cases: [(String, [Selector], String)] = [
+        ("2+2", [], "4"), ("1/3", [], "0.3333333333"), ("-3-2", [], "-5"),
+        ("123.456+0", [left], "123.46"), ("12345+0", [left, left], "1.23E+4"),
+        ("2+2", [up], "4"),
+        ("1710513000", [], "2024-03-15T14:30:00Z"),
+        ("1710513000123", [], "2024-03-15T14:30:00.123Z"),
+        ("2024-03-15T14:30:00.123Z", [], "1710513000"),
+        ("2024-03-15T14:30:00.123Z", [right], "1710513000123"),
+        ("0xff", [], "255"), ("0d255", [], "0xFF"),
+        ("0xff", [right, right], "0b11111111"), ("0d255", [up], "0xFF"),
+        ("#ff0000", [], "rgb(255 0 0)"), ("#ff0000", [right], "hsl(0 100% 50%)"),
+        ("rgb(255 0 0 / 50%)", [up], "#ff000080")
+    ]
+    for (query, commands, expected) in cases {
+        controller.resetSearch()
+        search.stringValue = query
+        controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
+        let editor = search.currentEditor() as! NSTextView
+        for command in commands { editor.doCommand(by: command) }
+        editor.setSelectedRange(NSRange(location: 0, length: 1))
+        editor.doCommand(by: #selector(NSResponder.insertTab(_:)))
+        precondition(search.stringValue == expected, "Tab for '\(query)' inserted '\(search.stringValue)', expected '\(expected)'")
+        precondition(window.firstResponder === editor && search.currentEditor() === editor)
+        precondition(editor.selectedRange() == NSRange(location: expected.utf16.count, length: 0))
+        precondition(!dismissed && NSPasteboard.general.changeCount == clipboardChanges)
+        editor.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
+        precondition(search.stringValue == query && !dismissed, "Escape must restore the original input")
+        precondition(editor.selectedRange() == NSRange(location: query.utf16.count, length: 0))
+        editor.doCommand(by: #selector(NSResponder.insertTab(_:)))
+        precondition(search.stringValue == expected, "Restoring input must retain precision, format, unit, and editing mode")
+        editor.doCommand(by: #selector(NSResponder.cancelOperation(_:)))
+        precondition(search.stringValue == query && !dismissed)
+    }
+    controller.resetSearch()
+    search.stringValue = "2+2"
+    controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
+    let editor = search.currentEditor() as! NSTextView
+    editor.doCommand(by: #selector(NSResponder.insertTab(_:)))
+    editor.insertText("*3", replacementRange: NSRange(location: NSNotFound, length: 0))
+    editor.doCommand(by: #selector(NSResponder.insertTab(_:)))
+    precondition(search.stringValue == "12", "Typing after Tab must continue from the inserted result")
+    for query in ["Finder", "3+", "#zzzz"] {
+        search.stringValue = query
+        controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
+        editor.doCommand(by: #selector(NSResponder.insertTab(_:)))
+        precondition(search.stringValue == query && window.firstResponder === editor)
+    }
+    search.stringValue = "Translate"
+    controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
+    editor.doCommand(by: #selector(NSResponder.insertTab(_:)))
+    precondition(controller.isTranslationMode && search.stringValue.isEmpty)
+    let translationEditor = search.currentEditor() as! NSTextView
+    translationEditor.doCommand(by: #selector(NSResponder.insertTab(_:)))
+    precondition(search.stringValue.isEmpty && window.firstResponder === translationEditor)
+    print("PASS: Tab inserts arithmetic, rounded, scientific, timestamp, base, and color results; focus, caret, clipboard, and chaining are preserved")
+    print("PASS: Tab keeps normal search focused and retains translation entry and translation-mode behavior")
+}
+
+@MainActor
+private func checkResultRestoration() {
+    let controller = ApplicationsViewController()
+    let window = AppearanceCheckWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
+                                       styleMask: [.borderless], backing: .buffered, defer: false)
+    window.contentViewController = controller
+    AppearanceCheckWindows.show(window)
+    defer { window.orderOut(nil) }
+    controller.resetSearch()
+    let views = calculatorDescendants(of: controller.view)
+    let search = views.compactMap { $0 as? NSTextField }.first { $0.isEditable }!
+    let back = views.compactMap { $0 as? NSButton }.first { $0.action == NSSelectorFromString("restorePreviousInput") }!
+    let hint = calculatorDescendants(of: back).compactMap { $0 as? KeyboardHintView }.first!
+    let editor = search.currentEditor() as! NSTextView
+    let tab = #selector(NSResponder.insertTab(_:))
+    let escape = #selector(NSResponder.cancelOperation(_:))
+    var dismissed = false
+    controller.onDismiss = { dismissed = true }
+    let setQuery: (String) -> Void = { query in
+        editor.insertText(query, replacementRange: NSRange(location: 0, length: editor.string.utf16.count))
+    }
+    setQuery(" 2+2 ")
+    editor.doCommand(by: tab)
+    precondition(search.stringValue == "4" && !back.isHiddenOrHasHiddenAncestor && hint.hint == .escape)
+    setQuery("4*3")
+    editor.doCommand(by: tab)
+    precondition(search.stringValue == "12")
+    let down = NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
+                               context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: 53)!
+    let up = NSEvent.keyEvent(with: .keyUp, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
+                             context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: false, keyCode: 53)!
+    hint.handleKeyEvent(down)
+    for _ in 0..<2 { editor.doCommand(by: escape) }
+    precondition(search.stringValue == "12" && hint.isKeyPressed)
+    hint.handleKeyEvent(up)
+    hint.handleKeyEvent(up)
+    precondition(search.stringValue == "4*3" && !dismissed)
+    hint.handleKeyEvent(down)
+    editor.doCommand(by: escape)
+    NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: window)
+    hint.handleKeyEvent(up)
+    precondition(search.stringValue == "4*3", "Focus loss must cancel Back")
+    setQuery("1/3")
+    for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+        controller.view.appearance = NSAppearance(named: appearance)
+        checkResultActionLayout(controller.view, name: "back-\(name)")
+    }
+    back.performClick(nil)
+    precondition(search.stringValue == " 2+2 " && back.isHiddenOrHasHiddenAncestor && !dismissed)
+    precondition(window.firstResponder === editor && editor.selectedRange().location == " 2+2 ".utf16.count)
+    editor.doCommand(by: escape)
+    precondition(dismissed, "Escape must dismiss when history is empty")
+    dismissed = false
+    editor.doCommand(by: tab)
+    controller.resetSearch()
+    editor.doCommand(by: escape)
+    precondition(dismissed && back.isHiddenOrHasHiddenAncestor, "Reopening must clear result history")
+    dismissed = false
+    setQuery("rgb(255 0 0)")
+    editor.doCommand(by: #selector(NSResponder.moveRight(_:)))
+    editor.doCommand(by: tab)
+    precondition(search.stringValue == "rgb(255 0 0)" && back.isHiddenOrHasHiddenAncestor)
+    editor.doCommand(by: escape)
+    precondition(dismissed, "An unchanged result must not add history")
+    dismissed = false
+    controller.resetSearch()
+    setQuery("2+2")
+    editor.doCommand(by: tab)
+    setQuery("Translate")
+    editor.doCommand(by: tab)
+    precondition(controller.isTranslationMode && back.isHiddenOrHasHiddenAncestor)
+    (search.currentEditor() as! NSTextView).doCommand(by: escape)
+    precondition(!controller.isTranslationMode && search.stringValue.isEmpty && !dismissed)
+    (search.currentEditor() as! NSTextView).doCommand(by: escape)
+    precondition(dismissed, "Translation must clear result history and retain its Escape behavior")
+    print("PASS: Escape/Back restores chained inputs and exact whitespace, retains output choices, cancels on focus loss, and resets for reopening/translation")
 }
 
 @MainActor
