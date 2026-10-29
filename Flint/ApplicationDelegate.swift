@@ -69,6 +69,7 @@ final class ApplicationDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         menu.addItem(withTitle: "Quit Flint", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         item.menu = menu
+        item.isVisible = preferences.showInMenuBar
         statusItem = item
     }
 
@@ -83,6 +84,8 @@ final class ApplicationDelegate: NSObject, NSApplicationDelegate {
             }, onRecordingStateChange: { [weak self] recording in
                 self?.hotKey?.setEnabled(!recording)
                 self?.updateShortcutMenu()
+            }, onMenuBarVisibilityChange: { [weak self] visible in
+                self?.statusItem?.isVisible = visible
             })
         }
         settingsController?.cancelRecording()

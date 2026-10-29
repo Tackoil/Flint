@@ -4,36 +4,36 @@ import ServiceManagement
 @MainActor
 final class SettingsViewController: NSViewController {
     private enum Section: Int, CaseIterable {
-        case general, shortcuts
-        var title: String { self == .general ? "General" : "Shortcuts" }
-        var symbol: String { self == .general ? "gearshape" : "command" }
-        var subtitle: String {
-            self == .general ? "A few small things to make Flint yours." : "Find your way around Flint."
-        }
+        case general
+        var title: String { "General" }
+        var symbol: String { "gearshape" }
     }
 
     private let preferences: LauncherPreferences
     private let onShortcutChange: (LauncherShortcut) -> Bool
     private let onRecordingStateChange: (Bool) -> Void
+    private let onMenuBarVisibilityChange: (Bool) -> Void
     private let shortcutRecorder = ShortcutRecorder(frame: .zero)
     private let statusLabel = Appearance.label("", size: 12, color: .systemRed)
     private let loginSwitch = NSSwitch()
+    private let menuBarSwitch = NSSwitch()
     private let loginStatus = Appearance.label("", size: 11, color: Appearance.muted)
     private let loginSettingsButton = NSButton(title: "Open Login Items…", target: nil, action: nil)
     private var activationObserver: NSObjectProtocol?
     private let content = NSStackView()
     private var sectionButtons: [NSButton] = []
     private var selectionSurfaces: [NSView] = []
-    private let shortcutReference = KeyboardHintView(.text(""))
     private var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.0"
     }
 
     init(preferences: LauncherPreferences, onShortcutChange: @escaping (LauncherShortcut) -> Bool,
-         onRecordingStateChange: @escaping (Bool) -> Void) {
+         onRecordingStateChange: @escaping (Bool) -> Void,
+         onMenuBarVisibilityChange: @escaping (Bool) -> Void) {
         self.preferences = preferences
         self.onShortcutChange = onShortcutChange
         self.onRecordingStateChange = onRecordingStateChange
+        self.onMenuBarVisibilityChange = onMenuBarVisibilityChange
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -41,7 +41,7 @@ final class SettingsViewController: NSViewController {
 
     override func loadView() {
         view = AppearanceSurfaceView(fillColor: .windowBackgroundColor)
-        view.frame = NSRect(x: 0, y: 0, width: 860, height: 590)
+        view.frame = NSRect(x: 0, y: 0, width: 860, height: 340)
         let sidebar = makeSidebar()
         content.orientation = .vertical
         content.alignment = .leading
@@ -61,13 +61,19 @@ final class SettingsViewController: NSViewController {
         ])
         configureRecorder()
         configureLoginItem()
+        menuBarSwitch.target = self
+        menuBarSwitch.action = #selector(changeMenuBarVisibility)
+        menuBarSwitch.setAccessibilityLabel("Show in Menu Bar")
+        menuBarSwitch.toolTip = "Show Flint’s flame icon in the menu bar."
+        menuBarSwitch.state = preferences.showInMenuBar ? .on : .off
         showSection(.general)
     }
 
     private func configureLoginItem() {
         loginSwitch.target = self
         loginSwitch.action = #selector(changeLoginItem)
-        loginSwitch.setAccessibilityLabel("Launch at login")
+        loginSwitch.setAccessibilityLabel("Open at Login")
+        loginSwitch.toolTip = "Start Flint automatically when you log in."
         loginStatus.maximumNumberOfLines = 3
         loginStatus.lineBreakMode = .byWordWrapping
         loginSettingsButton.bezelStyle = .rounded
@@ -90,18 +96,13 @@ final class SettingsViewController: NSViewController {
         loginSwitch.state = status == .enabled || status == .requiresApproval ? .on : .off
         loginSettingsButton.isHidden = status != .requiresApproval
         loginStatus.textColor = error == nil ? Appearance.muted : .systemRed
-        loginStatus.stringValue = error ?? loginStatusMessage(for: status)
+        loginStatus.stringValue = error ?? "Allow Flint in System Settings → General → Login Items."
+        loginStatus.isHidden = error == nil && status != .requiresApproval
     }
 
-    private func loginStatusMessage(for status: SMAppService.Status) -> String {
-        switch status {
-        case .enabled:
-            return "Flint will be ready in the menu bar when you log in."
-        case .requiresApproval:
-            return "Allow Flint in System Settings → General → Login Items."
-        default:
-            return "Flint won’t start automatically when you log in."
-        }
+    @objc private func changeMenuBarVisibility() {
+        preferences.showInMenuBar = menuBarSwitch.state == .on
+        onMenuBarVisibilityChange(preferences.showInMenuBar)
     }
 
     @objc private func changeLoginItem() {
@@ -196,7 +197,6 @@ final class SettingsViewController: NSViewController {
         shortcutRecorder.onShortcutChange = { [weak self] in self?.applyShortcut($0) }
         shortcutRecorder.onRecordingStateChange = onRecordingStateChange
         shortcutRecorder.onValidationError = { [weak self] in self?.showError($0) }
-        shortcutRecorder.widthAnchor.constraint(equalToConstant: 154).isActive = true
         shortcutRecorder.controlSize = .large
         statusLabel.maximumNumberOfLines = 3
         statusLabel.lineBreakMode = .byWordWrapping
@@ -218,75 +218,36 @@ final class SettingsViewController: NSViewController {
             content.removeArrangedSubview($0)
             $0.removeFromSuperview()
         }
-        addContent(verticalStack([
-            label(section.title, size: 25, weight: .bold, color: Appearance.text),
-            label(section.subtitle, size: 12)
-        ], spacing: 7))
-        if section == .general { addGeneralContent() } else { addShortcutReference() }
+        addContent(label(section.title, size: 25, weight: .bold, color: Appearance.text))
+        addGeneralContent()
     }
 
     private func addGeneralContent() {
-        let icon = Appearance.symbol("flame.fill", size: 29, color: Appearance.accent)
-        icon.widthAnchor.constraint(equalToConstant: 44).isActive = true
-        let identity = verticalStack([
-            label("Flint", size: 17, weight: .semibold, color: Appearance.text),
-            label("A little spark. A faster start.", size: 12)
-        ], spacing: 5)
-        addContent(card([
-            paddedRow(Appearance.stack([icon, identity, Appearance.spacer(),
-                                       label("Version \(version)", size: 11)], spacing: 14), height: 84)
-        ]))
-        let restore = NSButton(title: "Restore Default", target: self, action: #selector(restoreDefault))
+        let restore = NSButton(image: NSImage(systemSymbolName: "arrow.counterclockwise",
+                                              accessibilityDescription: "Restore Default Shortcut")!,
+                               target: self, action: #selector(restoreDefault))
         restore.bezelStyle = .rounded
-        let activation = card([
-            settingRow("Launcher shortcut", detail: "Show or hide Flint from any app.", control: shortcutRecorder),
-            settingRow("Default shortcut", detail: "Return to Command–Space.", control: restore)
+        restore.imagePosition = .imageOnly
+        restore.toolTip = "Restore default shortcut (Command–Space)."
+        restore.setAccessibilityLabel("Restore Default Shortcut")
+        restore.widthAnchor.constraint(equalToConstant: 28).isActive = true
+        restore.heightAnchor.constraint(equalToConstant: 28).isActive = true
+        let shortcutControls = Appearance.stack([shortcutRecorder, restore], spacing: 8)
+        let settings = card([
+            settingRow("Open at Login", control: loginSwitch),
+            settingRow("Show in Menu Bar", control: menuBarSwitch),
+            settingRow("Launcher Shortcut", control: shortcutControls)
         ])
-        let section = verticalStack([
-            label("Activation", size: 12, weight: .semibold), activation
-        ], spacing: 10)
-        addContent(section)
-        let instructions = label("Click the shortcut, then press a key combination. Escape cancels.", size: 11)
-        instructions.maximumNumberOfLines = 2
-        instructions.lineBreakMode = .byWordWrapping
-        content.setCustomSpacing(12, after: section)
-        addContent(verticalStack([instructions, statusLabel], spacing: 8))
-        addContent(card([
-            settingRow("Launch at login", detail: "Start Flint automatically when you log in.", control: loginSwitch)
-        ]))
+        addContent(settings)
+        content.setCustomSpacing(12, after: settings)
+        addContent(statusLabel)
         addContent(verticalStack([loginStatus, loginSettingsButton], spacing: 8))
-        addContent(label("Changes save automatically.", size: 11))
     }
 
-    private func addShortcutReference() {
-        shortcutReference.hint = .text(preferences.shortcut.title)
-        addContent(card([
-            referenceRow("Show or hide Flint", control: shortcutReference),
-            referenceRow("Select a result", keys: [.upArrow, .downArrow]),
-            referenceRow("Open application or run action", keys: [.returnKey]),
-            referenceRow("Dismiss Flint", keys: [.escape]),
-            referenceRow("Refresh applications", keys: [.command, .text("R")]),
-            referenceRow("Open Settings", keys: [.command, .text(",")])
-        ]))
-        addContent(label("Change the launcher shortcut in General.", size: 11))
-    }
-
-    private func referenceRow(_ title: String, keys: [KeyboardHint]) -> NSView {
-        referenceRow(title, control: Appearance.stack(keys.map { KeyboardHintView($0) }, spacing: 5))
-    }
-
-    private func referenceRow(_ title: String, control: NSView) -> NSView {
+    private func settingRow(_ title: String, control: NSView) -> NSView {
         paddedRow(Appearance.stack([
             label(title, size: 13, color: Appearance.text), Appearance.spacer(), control
-        ], spacing: 16), height: 53)
-    }
-
-    private func settingRow(_ title: String, detail: String, control: NSView) -> NSView {
-        let labels = verticalStack([
-            label(title, size: 13, weight: .medium, color: Appearance.text),
-            label(detail, size: 11)
-        ], spacing: 5)
-        return paddedRow(Appearance.stack([labels, Appearance.spacer(), control], spacing: 16), height: 78)
+        ], spacing: 16), height: 48)
     }
 
     private func label(_ text: String, size: CGFloat = 12, weight: NSFont.Weight = .regular,
@@ -354,13 +315,13 @@ final class SettingsViewController: NSViewController {
         _ = view
         selectCurrentShortcut()
         refreshLoginItem()
+        menuBarSwitch.state = preferences.showInMenuBar ? .on : .off
         showError(shortcutIsRegistered ? nil : "The shortcut couldn’t be registered. Try a different shortcut.")
         if !shortcutIsRegistered { showSection(.general) }
     }
 
     private func selectCurrentShortcut() {
         shortcutRecorder.shortcut = preferences.shortcut
-        shortcutReference.hint = .text(preferences.shortcut.title)
     }
 
     func cancelRecording() { shortcutRecorder.cancelRecording() }

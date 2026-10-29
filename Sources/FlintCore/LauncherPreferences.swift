@@ -51,9 +51,15 @@ struct LauncherShortcut: Codable, Equatable, Sendable {
 final class LauncherPreferences {
     private let defaults: UserDefaults
     private static let shortcutKey = "launcher.shortcut"
+    private static let menuBarKey = "showInMenuBar"
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
+    }
+
+    var showInMenuBar: Bool {
+        get { defaults.object(forKey: Self.menuBarKey) as? Bool ?? true }
+        set { defaults.set(newValue, forKey: Self.menuBarKey) }
     }
 
     var shortcut: LauncherShortcut {

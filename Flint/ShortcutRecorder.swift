@@ -3,7 +3,7 @@ import AppKit
 @MainActor
 final class ShortcutRecorder: NSButton {
     var shortcut: LauncherShortcut = .commandSpace {
-        didSet { if !isRecording { title = shortcut.title } }
+        didSet { if !isRecording { updateShortcutDisplay() } }
     }
     var onShortcutChange: ((LauncherShortcut) -> Void)?
     var onRecordingStateChange: ((Bool) -> Void)?
@@ -11,20 +11,50 @@ final class ShortcutRecorder: NSButton {
     private(set) var isRecording = false
     private var eventMonitor: Any?
     private var windowObservers: [NSObjectProtocol] = []
+    private let keycaps = Appearance.stack([], spacing: 5)
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        title = shortcut.title
+        title = ""
         bezelStyle = .rounded
+        isBordered = false
         font = .monospacedSystemFont(ofSize: 13, weight: .medium)
         target = self
         action = #selector(toggleRecording)
         toolTip = "Click to record a shortcut. Escape cancels."
         setAccessibilityLabel("Launcher shortcut")
         setAccessibilityHelp("Activate, then press a shortcut. Escape cancels recording.")
+        keycaps.translatesAutoresizingMaskIntoConstraints = false
+        keycaps.setAccessibilityHidden(true)
+        addSubview(keycaps)
+        NSLayoutConstraint.activate([
+            keycaps.centerXAnchor.constraint(equalTo: centerXAnchor),
+            keycaps.centerYAnchor.constraint(equalTo: centerYAnchor),
+            widthAnchor.constraint(greaterThanOrEqualTo: keycaps.widthAnchor, constant: 12),
+            heightAnchor.constraint(greaterThanOrEqualToConstant: 32)
+        ])
+        updateShortcutDisplay()
     }
 
     required init?(coder: NSCoder) { fatalError("Use init(frame:)") }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        super.hitTest(point) == nil ? nil : self
+    }
+
+    private func updateShortcutDisplay() {
+        title = ""
+        keycaps.isHidden = false
+        keycaps.arrangedSubviews.forEach {
+            keycaps.removeArrangedSubview($0)
+            $0.removeFromSuperview()
+        }
+        let modifiers = shortcut.modifiers.symbols
+        var hints = modifiers.map { $0 == "⌘" ? KeyboardHint.command : .text(String($0)) }
+        hints.append(.text(String(shortcut.title.dropFirst(modifiers.count))))
+        hints.forEach { keycaps.addArrangedSubview(KeyboardHintView($0, tracksKeyboardEvents: false)) }
+        setAccessibilityValue(shortcut.title)
+    }
 
     @objc private func toggleRecording() {
         if isRecording { cancelRecording() } else { beginRecording() }
@@ -33,7 +63,9 @@ final class ShortcutRecorder: NSButton {
     private func beginRecording() {
         guard let window else { return }
         isRecording = true
+        keycaps.isHidden = true
         title = "Press shortcut…"
+        setAccessibilityValue(title)
         contentTintColor = Appearance.accent
         window.makeFirstResponder(self)
         onValidationError?(nil)
@@ -55,6 +87,7 @@ final class ShortcutRecorder: NSButton {
         let modifiers = ShortcutModifiers(eventFlags: event.modifierFlags)
         if event.type == .flagsChanged {
             title = modifiers.symbols + "…"
+            setAccessibilityValue(title)
             return event
         }
         if event.keyCode == 53 {
@@ -90,7 +123,7 @@ final class ShortcutRecorder: NSButton {
         eventMonitor = nil
         windowObservers.forEach { NotificationCenter.default.removeObserver($0) }
         windowObservers.removeAll()
-        title = shortcut.title
+        updateShortcutDisplay()
         contentTintColor = nil
         onValidationError?(nil)
         onRecordingStateChange?(false)
