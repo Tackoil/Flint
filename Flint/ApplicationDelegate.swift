@@ -68,7 +68,11 @@ final class ApplicationDelegate: NSObject, NSApplicationDelegate, UNUserNotifica
 
     private func installStatusItem() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.image = NSImage(systemSymbolName: "flame.fill", accessibilityDescription: "Flint")
+        let icon = NSImage(named: "MenuBarIcon")
+        icon?.isTemplate = true
+        icon?.size = NSSize(width: 18, height: 18)
+        icon?.accessibilityDescription = "Flint"
+        item.button?.image = icon
         let menu = NSMenu()
         let show = menu.addItem(withTitle: "Show Flint", action: #selector(showLauncher), keyEquivalent: "")
         show.target = self

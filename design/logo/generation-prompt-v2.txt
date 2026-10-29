@@ -1,0 +1,10 @@
+Tool: built-in image_gen
+
+Use case: logo-brand
+Asset type: final macOS app icon for Flint, a small fast keyboard-driven application launcher.
+Primary request: A new softer logo direction. Design one beautifully simple coral flame on a dark charcoal rounded-square tile. The flame is a single continuous flowing silhouette with a generous rounded base, gently curving sides, and one soft tapered tip leaning slightly right. A small smooth teardrop-shaped negative-space cutout near the bottom gives the flame an open, airy center. All contours feel organic, calm and friendly. Avoid polygonal geometry and jagged edges. The mark should be instantly readable at small sizes.
+Composition: one centered icon, straight-on, square image. Rounded-square charcoal macOS app tile occupies approximately 82% of canvas width, with transparent padding outside the tile. Mark occupies approximately 48% of tile width and 60% of its height. Generous breathing room.
+Style: elegant independent Mac utility identity. Minimal, fluid, precise vector-like contours. Nearly flat coral mark with a very subtle warm orange-to-coral tonal shift. Quiet charcoal tile with restrained depth and fine soft edge lighting.
+Palette: charcoal #232323, warm coral #FF6E4F, subtly warmer at the flame tip.
+Text: none.
+Constraints: actual transparent background outside the tile. Only one flame silhouette. No monogram, no letter F, no sharp geometric cutouts, no zigzags, no facets, no lightning bolts, no detached sparks, no four-point sparkle, no outlines, no extra objects, no mockup scene, no perspective, no heavy gloss, no watermark. Deliver only the finished single icon.
