@@ -4,6 +4,12 @@ import Carbon
 private final class LauncherPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
+
+    #if FLINT_APPEARANCE_CHECKS
+    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect {
+        AppearanceCheckWindows.showsWindows ? super.constrainFrameRect(frameRect, to: screen) : frameRect
+    }
+    #endif
 }
 
 @MainActor
@@ -58,7 +64,12 @@ final class LauncherWindowController: NSWindowController, NSWindowDelegate {
         let screen = NSScreen.screens.first { $0.frame.contains(NSEvent.mouseLocation) } ?? NSScreen.main
         guard window != nil, let screen else { return }
         allowsResizeAnimation = false
-        placement = LauncherPlacement(visibleFrame: screen.visibleFrame,
+        #if FLINT_APPEARANCE_CHECKS
+        let visibleFrame = AppearanceCheckWindows.frame(for: screen.visibleFrame)
+        #else
+        let visibleFrame = screen.visibleFrame
+        #endif
+        placement = LauncherPlacement(visibleFrame: visibleFrame,
                                       expandedSize: NSSize(width: 760, height: 560))
         displayMode = nil
         applicationsController.resetSearch()
@@ -80,8 +91,12 @@ final class LauncherWindowController: NSWindowController, NSWindowDelegate {
         window.ignoresMouseEvents = !presented
         if presented {
             if !window.isVisible { window.alphaValue = 0 }
+            #if FLINT_APPEARANCE_CHECKS
+            AppearanceCheckWindows.show(window)
+            #else
             NSApp.activate(ignoringOtherApps: true)
             window.makeKeyAndOrderFront(nil)
+            #endif
             selectABCInputSource()
         }
         NSAnimationContext.runAnimationGroup { context in

@@ -3,14 +3,14 @@ import AppKit
 @MainActor
 func checkActionGroupResizing() {
     _ = NSApplication.shared
-    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 80),
+    let window = AppearanceCheckWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 80),
                           styleMask: [.borderless], backing: .buffered, defer: false)
     let header = LauncherHeaderFooter()
     let footer = header.footer()
     footer.wantsLayer = true
     footer.frame = NSRect(x: 0, y: 0, width: 760, height: 56)
     window.contentView!.addSubview(footer)
-    window.makeKeyAndOrderFront(nil)
+    AppearanceCheckWindows.show(window)
     defer { window.orderOut(nil) }
     window.contentView!.layoutSubtreeIfNeeded()
     RunLoop.current.run(until: Date().addingTimeInterval(0.05))
@@ -109,7 +109,7 @@ private func checkActionGroupSurfaceEdges(_ actions: ActionGroupView, expectedRi
 @MainActor
 func checkLauncherDialog() {
     _ = NSApplication.shared
-    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
+    let window = AppearanceCheckWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
                           styleMask: [.borderless], backing: .buffered, defer: false)
     let surface = Appearance.launcherSurface(content: NSView(frame: window.contentView!.bounds))
     Appearance.setLauncherCornerRadius(LauncherLayout.cornerRadius, on: surface)
@@ -187,7 +187,7 @@ private func dialogHint(in button: NSButton) -> KeyboardHintView {
 
 @MainActor
 func checkKeyboardHintFeedback() {
-    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 100),
+    let window = AppearanceCheckWindow(contentRect: NSRect(x: 0, y: 0, width: 300, height: 100),
                           styleMask: [.borderless], backing: .buffered, defer: false)
     let hint = KeyboardHintView(.returnKey, label: "Confirm")
     window.contentView!.addSubview(hint)

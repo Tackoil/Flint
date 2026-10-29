@@ -128,6 +128,7 @@ final class KeyboardHintView: NSView {
     private var eventMonitor: Any?
     private var resignObserver: NSObjectProtocol?
     private var pressedKeyCode: UInt16?
+    private var pendingKeyReleaseAction: (() -> Void)?
     private(set) var isKeyPressed = false
     var onKeyRelease: (() -> Void)?
 
@@ -223,8 +224,18 @@ final class KeyboardHintView: NSView {
             pressedKeyCode = event.keyCode
             setKeyPressed(true)
         } else if event.type == .keyUp && event.keyCode == pressedKeyCode {
+            let action = pendingKeyReleaseAction
             resetKeyPress()
             onKeyRelease?()
+            action?()
+        }
+    }
+
+    func performAfterKeyRelease(_ action: @escaping () -> Void) {
+        if isKeyPressed {
+            pendingKeyReleaseAction = action
+        } else {
+            action()
         }
     }
 
@@ -248,6 +259,7 @@ final class KeyboardHintView: NSView {
 
     private func resetKeyPress() {
         pressedKeyCode = nil
+        pendingKeyReleaseAction = nil
         setKeyPressed(false)
     }
 

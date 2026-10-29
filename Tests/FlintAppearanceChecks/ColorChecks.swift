@@ -3,7 +3,7 @@ import AppKit
 @MainActor
 func checkColorConversionIntegration() {
     let controller = ApplicationsViewController()
-    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 232),
+    let window = AppearanceCheckWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 232),
                           styleMask: [.borderless], backing: .buffered, defer: false)
     window.contentViewController = controller
     let search = colorDescendants(controller.view).compactMap { $0 as? NSTextField }.first { $0.isEditable }!
@@ -155,7 +155,7 @@ private func checkColorOutputAnimation(_ controller: ApplicationsViewController,
     controller.resetSearch()
     search.stringValue = "#66ccff"
     controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
-    window.makeKeyAndOrderFront(nil)
+    AppearanceCheckWindows.show(window)
     defer { window.orderOut(nil) }
     window.contentView!.layoutSubtreeIfNeeded()
     RunLoop.current.run(until: Date().addingTimeInterval(0.05))
@@ -204,7 +204,7 @@ private func checkColorOutputAnimation(_ controller: ApplicationsViewController,
 @MainActor
 private func renderColorPreviews(_ controller: ApplicationsViewController, search: NSTextField, window: NSWindow) {
     guard let directory = ProcessInfo.processInfo.environment["FLINT_COLOR_PREVIEW_DIR"] else { return }
-    window.makeKeyAndOrderFront(nil)
+    AppearanceCheckWindows.show(window)
     defer { window.orderOut(nil) }
     for (name, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
         controller.view.appearance = NSAppearance(named: appearance)

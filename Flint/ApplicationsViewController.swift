@@ -442,7 +442,9 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
               NSApp.currentEvent?.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty != false else {
             return false
         }
-        setColorSwitchingEnabled(enabled)
+        chrome.performAfterKeyRelease(enabled ? .downArrow : .upArrow) { [weak self] in
+            self?.setColorSwitchingEnabled(enabled)
+        }
         return true
     }
 
@@ -462,12 +464,15 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
             #selector(NSResponder.moveLeft(_:)): -1, #selector(NSResponder.moveBackward(_:)): -1,
             #selector(NSResponder.moveRight(_:)): 1, #selector(NSResponder.moveForward(_:)): 1
         ]
-        guard let offset = offsets[selector], let color = colorConversion, isColorSwitchingEnabled, !isPresentingDialog, !isOpening,
+        guard let offset = offsets[selector], colorConversion != nil, isColorSwitchingEnabled, !isPresentingDialog, !isOpening,
               NSApp.currentEvent?.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty != false else {
             return false
         }
-        colorOutputFormat = color.format.shifted(by: offset)
-        applyQuery()
+        chrome.performAfterKeyRelease(offset < 0 ? .leftArrow : .rightArrow) { [weak self] in
+            guard let self, let color = self.colorConversion, self.isColorSwitchingEnabled else { return }
+            self.colorOutputFormat = color.format.shifted(by: offset)
+            self.applyQuery()
+        }
         return true
     }
 
@@ -485,7 +490,9 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
               NSApp.currentEvent?.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty != false else {
             return false
         }
-        setTimestampOutputUnit(unit)
+        chrome.performAfterKeyRelease(unit == .seconds ? .leftArrow : .rightArrow) { [weak self] in
+            self?.setTimestampOutputUnit(unit)
+        }
         return true
     }
 
@@ -522,7 +529,9 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
               NSApp.currentEvent?.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty != false else {
             return false
         }
-        setRoundingEnabled(enabled)
+        chrome.performAfterKeyRelease(enabled ? .downArrow : .upArrow) { [weak self] in
+            self?.setRoundingEnabled(enabled)
+        }
         return true
     }
 

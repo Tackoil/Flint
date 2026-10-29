@@ -111,4 +111,6 @@ sh scripts/check-appearance.sh
 cognitive --threshold 15 Sources Flint Tests
 ```
 
+Desktop appearance checks run offscreen by default and do not activate their windows or take keyboard focus. To intentionally watch the windows during a visual inspection, run `FLINT_UI_TESTS_VISIBLE=1 sh scripts/check-appearance.sh`. Image previews can still be rendered to files while the windows stay offscreen.
+
 This version contains application search and launching, numeric calculations, color conversion, system actions, and shortcut settings.

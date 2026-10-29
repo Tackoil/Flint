@@ -5,7 +5,7 @@ project_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 appearance_check_dir=$(mktemp -d "${TMPDIR:-/tmp}/flint-appearance.XXXXXX")
 trap 'rm -rf "$appearance_check_dir"' EXIT
 
-xcrun swiftc -swift-version 5 -parse-as-library \
+xcrun swiftc -swift-version 5 -parse-as-library -D FLINT_APPEARANCE_CHECKS \
     -module-cache-path "${CLANG_MODULE_CACHE_PATH:-$appearance_check_dir/module-cache}" \
     "$project_dir/Flint/Appearance.swift" \
     "$project_dir/Flint/KeyboardHint.swift" \
@@ -18,6 +18,7 @@ xcrun swiftc -swift-version 5 -parse-as-library \
     "$project_dir/Flint/ColorResultView.swift" \
     "$project_dir"/Sources/FlintCore/*.swift \
     "$project_dir/Tests/FlintAppearanceChecks/CalculatorChecks.swift" \
+    "$project_dir/Tests/FlintAppearanceChecks/AppearanceCheckWindows.swift" \
     "$project_dir/Tests/FlintAppearanceChecks/ColorChecks.swift" \
     "$project_dir/Tests/FlintAppearanceChecks/RoundingChecks.swift" \
     "$project_dir/Tests/FlintAppearanceChecks/LauncherDialogChecks.swift" \

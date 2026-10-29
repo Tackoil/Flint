@@ -3,7 +3,7 @@ import AppKit
 @MainActor
 func checkNumericRoundingIntegration() {
     let controller = ApplicationsViewController()
-    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
+    let window = AppearanceCheckWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
                           styleMask: [.borderless], backing: .buffered, defer: false)
     window.contentViewController = controller
     let views = roundingDescendants(of: controller.view)
@@ -93,7 +93,7 @@ private func roundingDescendants(of view: NSView) -> [NSView] {
 @MainActor
 func checkRoundingModeSwitches() {
     let controller = ApplicationsViewController()
-    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
+    let window = AppearanceCheckWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
                           styleMask: [.borderless], backing: .buffered, defer: false)
     window.contentViewController = controller
     let views = roundingDescendants(of: controller.view)
@@ -174,4 +174,77 @@ private func checkEditingModeSurvivesInput(_ controller: ApplicationsViewControl
     precondition(controller.control(search, textView: editor, doCommandBy: #selector(NSResponder.moveDown(_:))))
     precondition(button.accessibilityLabel() == "Edit expression")
     precondition(controller.control(search, textView: editor, doCommandBy: #selector(NSResponder.moveLeft(_:))))
+}
+
+@MainActor
+func checkModeChangesOnKeyRelease() {
+    let controller = ApplicationsViewController()
+    let window = AppearanceCheckWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 232),
+                                       styleMask: [.borderless], backing: .buffered, defer: false)
+    window.contentViewController = controller
+    let views = roundingDescendants(of: controller.view)
+    let search = views.compactMap { $0 as? NSTextField }.first { $0.isEditable }!
+    let cases = [("123.456+0", "toggleRoundingMode", "Edit expression", "Round result"),
+                 ("#ff6363", "toggleColorSwitchingMode", "Edit color", "Switch format")]
+    for (query, action, initial, editing) in cases {
+        search.stringValue = query
+        controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
+        let button = views.compactMap { $0 as? NSButton }.first { $0.action == NSSelectorFromString(action) }!
+        let hint = roundingDescendants(of: button).compactMap { $0 as? KeyboardHintView }.first!
+        checkDeferredModeCommand(controller, search: search, hint: hint, keyCode: 126,
+                                 selector: #selector(NSResponder.moveUp(_:)), before: initial, after: editing) {
+            button.accessibilityLabel()!
+        }
+        checkDeferredModeCommand(controller, search: search, hint: hint, keyCode: 125,
+                                 selector: #selector(NSResponder.moveDown(_:)), before: editing, after: initial) {
+            button.accessibilityLabel()!
+        }
+        hint.handleKeyEvent(modeKeyEvent(126))
+        precondition(controller.control(search, textView: NSTextView(), doCommandBy: #selector(NSResponder.moveUp(_:))))
+        NotificationCenter.default.post(name: NSWindow.didResignKeyNotification, object: window)
+        hint.handleKeyEvent(modeKeyEvent(126, type: .keyUp))
+        precondition(button.accessibilityLabel() == initial, "Focus loss must cancel the pending mode change")
+    }
+    checkOutputChangesOnKeyRelease(controller, search: search)
+    print("PASS: calculator/color modes, color formats and timestamp units change once on release; focus loss cancels pending switches")
+}
+
+@MainActor
+private func checkOutputChangesOnKeyRelease(_ controller: ApplicationsViewController, search: NSTextField) {
+    for (query, label, after) in [("#ff6363", "HSL", "HWB"), ("2024-03-15T14:30:00Z", "ms", "s")] {
+        search.stringValue = query
+        controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
+        let hint = roundingDescendants(of: controller.view).compactMap { $0 as? KeyboardHintView }
+            .first { !$0.isHiddenOrHasHiddenAncestor && $0.label == label }!
+        checkDeferredModeCommand(controller, search: search, hint: hint, keyCode: 124,
+                                 selector: #selector(NSResponder.moveRight(_:)), before: label, after: after) {
+            hint.label!
+        }
+        let before = hint.label
+        hint.handleKeyEvent(modeKeyEvent(hint.hint == .leftArrow ? 123 : 124, type: .keyUp))
+        precondition(hint.label == before, "A release without a press must not change output")
+    }
+}
+
+@MainActor
+private func checkDeferredModeCommand(_ controller: ApplicationsViewController, search: NSTextField,
+                                      hint: KeyboardHintView, keyCode: UInt16, selector: Selector,
+                                      before: String, after: String, state: () -> String) {
+    let editor = NSTextView()
+    hint.handleKeyEvent(modeKeyEvent(keyCode))
+    precondition(controller.control(search, textView: editor, doCommandBy: selector))
+    precondition(state() == before && hint.isKeyPressed, "Key down must preserve the current mode and pressed hint")
+    hint.handleKeyEvent(modeKeyEvent(keyCode, isRepeat: true))
+    precondition(controller.control(search, textView: editor, doCommandBy: selector))
+    hint.handleKeyEvent(modeKeyEvent(53, type: .keyUp))
+    precondition(state() == before && hint.isKeyPressed, "Repeats and unrelated releases must not change modes")
+    hint.handleKeyEvent(modeKeyEvent(keyCode, type: .keyUp))
+    precondition(state() == after && !hint.isKeyPressed, "The matching release must change the mode")
+    hint.handleKeyEvent(modeKeyEvent(keyCode, type: .keyUp))
+    precondition(state() == after, "Duplicate releases must not change the mode again")
+}
+
+private func modeKeyEvent(_ keyCode: UInt16, type: NSEvent.EventType = .keyDown, isRepeat: Bool = false) -> NSEvent {
+    NSEvent.keyEvent(with: type, location: .zero, modifierFlags: [], timestamp: 0, windowNumber: 0,
+                    context: nil, characters: "", charactersIgnoringModifiers: "", isARepeat: isRepeat, keyCode: keyCode)!
 }

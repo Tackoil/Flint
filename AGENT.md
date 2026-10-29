@@ -2,6 +2,8 @@
 
 After making changes to Flint, build the app, run the relevant checks, and restart it with the latest build so the user can review the changes.
 
+Keep desktop appearance checks offscreen (the default) so they do not interrupt the user. Use `FLINT_UI_TESTS_VISIBLE=1` only when visible inspection is requested. Preview images can be rendered offscreen.
+
 Use `--keep-open` when launching Flint for testing so it stays visible when focus moves to testing tools. Quit the running instance first, then launch the latest build with:
 
 ```sh

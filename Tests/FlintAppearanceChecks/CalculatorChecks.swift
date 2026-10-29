@@ -3,7 +3,7 @@ import AppKit
 @MainActor
 func checkCalculatorIntegration() {
     let controller = ApplicationsViewController()
-    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
+    let window = AppearanceCheckWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
                           styleMask: [.borderless], backing: .buffered, defer: false)
     window.contentViewController = controller
     controller.view.layoutSubtreeIfNeeded()
@@ -175,7 +175,7 @@ private func checkTimestampUnitLabel(_ controller: ApplicationsViewController, s
 @MainActor
 func checkTimestampKeyboardSwitching() {
     let controller = ApplicationsViewController()
-    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
+    let window = AppearanceCheckWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
                           styleMask: [.borderless], backing: .buffered, defer: false)
     window.contentViewController = controller
     let search = calculatorDescendants(of: controller.view).compactMap { $0 as? NSTextField }.first { $0.isEditable }!

@@ -3,6 +3,17 @@ import AppKit
 @main
 struct AppearanceChecks {
     @MainActor static func main() {
+        print(AppearanceCheckWindows.showsWindows ? "UI checks: visible windows" : "UI checks: offscreen windows; keyboard focus preserved")
+        if ProcessInfo.processInfo.environment["FLINT_MODE_SWITCHING_ONLY"] == "1" {
+            checkKeyboardHintFeedback()
+            checkColorConversionIntegration()
+            checkNumericRoundingIntegration()
+            checkRoundingModeSwitches()
+            checkModeChangesOnKeyRelease()
+            checkTimestampIntegration()
+            checkTimestampKeyboardSwitching()
+            return
+        }
         let content = NSView(frame: NSRect(x: 0, y: 0, width: 760, height: 560))
         let surface = Appearance.launcherSurface(content: content)
         Appearance.setLauncherCornerRadius(28, on: surface)
@@ -64,6 +75,7 @@ struct AppearanceChecks {
         checkCalculatorIntegration()
         checkNumericRoundingIntegration()
         checkRoundingModeSwitches()
+        checkModeChangesOnKeyRelease()
         checkTimestampIntegration()
         checkTimestampKeyboardSwitching()
         checkCalculatorToSearchTransitions()

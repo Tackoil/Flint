@@ -97,7 +97,7 @@ private final class LauncherOpenButton: NSButton {
 }
 
 private final class LauncherModeButton: NSButton {
-    private let content = KeyboardHintView(.upArrow, label: "Edit expression")
+    let content = KeyboardHintView(.upArrow, label: "Edit expression")
 
     override var acceptsFirstResponder: Bool { false }
 
@@ -270,6 +270,19 @@ final class LauncherHeaderFooter {
     }
 
     var isReturnKeyPressed: Bool { (openButton as? LauncherOpenButton)?.isReturnKeyPressed == true }
+
+    func performAfterKeyRelease(_ key: KeyboardHint, action: @escaping () -> Void) {
+        let hints = [
+            (roundingModeButton as? LauncherModeButton)?.content,
+            (colorModeButton as? LauncherModeButton)?.content,
+            previousColorFormat, nextColorFormat, timestampUnitHint
+        ].compactMap { $0 }
+        guard let hint = hints.first(where: { $0.hint == key && !$0.isHiddenOrHasHiddenAncestor }) else {
+            action()
+            return
+        }
+        hint.performAfterKeyRelease(action)
+    }
 
     func setTimestampUnitSwitching(_ unit: TimestampCalculation.Unit?) {
         animateActionLayout {
