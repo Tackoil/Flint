@@ -3,6 +3,24 @@ import Testing
 @testable import FlintCore
 
 struct ApplicationDiscoveryTests {
+    @Test func defaultDiscoveryIncludesFinder() {
+        let apps = ApplicationDiscovery.discover()
+        #expect(apps.filter { $0.bundleIdentifier == "com.apple.finder" }.count == 1)
+    }
+
+    @Test func standaloneApplicationIsDeduplicatedAndSkipsNestedHelpers() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let finder = root.appendingPathComponent("Finder.app")
+        try makeApp(at: finder, name: "Finder", id: "test.finder")
+        try makeApp(at: finder.appendingPathComponent("Contents/Helper.app"), name: "Helper", id: "test.helper")
+
+        let apps = ApplicationDiscovery.discover(in: [finder, root])
+        #expect(apps.count == 1)
+        #expect(apps.first?.bundleIdentifier == "test.finder")
+        #expect(apps.first?.url == finder)
+    }
+
     @Test func scansCategoriesDeduplicatesAndSkipsNestedHelpers() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }

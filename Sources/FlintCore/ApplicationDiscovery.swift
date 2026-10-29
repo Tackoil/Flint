@@ -6,6 +6,7 @@ enum ApplicationDiscovery {
             FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Applications"),
             URL(fileURLWithPath: "/Applications"),
             URL(fileURLWithPath: "/System/Applications"),
+            URL(fileURLWithPath: "/System/Library/CoreServices/Finder.app"),
             URL(fileURLWithPath: "/System/Library/CoreServices/Applications"),
             URL(fileURLWithPath: "/System/Cryptexes/App/System/Applications")
         ]
@@ -19,6 +20,9 @@ enum ApplicationDiscovery {
     }
 
     private static func applications(in directory: URL) -> [ApplicationRecord] {
+        if directory.pathExtension.lowercased() == "app" {
+            return application(at: directory).map { [$0] } ?? []
+        }
         guard let enumerator = FileManager.default.enumerator(
             at: directory,
             includingPropertiesForKeys: [.isDirectoryKey],

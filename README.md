@@ -29,7 +29,7 @@ Escape and your configured launcher shortcut still hide the launcher. Opening an
 
 ## Applications
 
-Flint discovers installed applications in `/Applications`, `~/Applications`, `/System/Applications`, system CoreServices applications, and the system Cryptex applications folder. It includes category folders such as Utilities, skips apps embedded inside other apps, and deduplicates applications by bundle identifier. Discovery runs off the main thread, while native app icons load only for displayed rows.
+Flint discovers installed applications in `/Applications`, `~/Applications`, `/System/Applications`, system CoreServices applications, and the system Cryptex applications folder. It also includes Finder from `/System/Library/CoreServices/Finder.app`. It includes category folders such as Utilities, skips apps embedded inside other apps, and deduplicates applications by bundle identifier. Discovery runs off the main thread, while native app icons load only for displayed rows.
 
 The launcher opens as a compact search bar. Type to expand the application results; clearing the input collapses it again. Whitespace-only input also keeps it collapsed. Search ignores case and diacritics and supports abbreviations such as `vsc` for Visual Studio Code. Exact names rank before prefixes, substrings, and abbreviation matches. Click an app or press Return to open it.
 
