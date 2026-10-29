@@ -58,6 +58,7 @@ struct AppearanceChecks {
         print("PASS: layer colors resolve for both light and dark appearances")
         checkLauncherDialog()
         checkKeyboardHintFeedback()
+        checkActionGroupResizing()
         checkLauncherRowIcons()
         checkCalculatorIntegration()
         checkNumericRoundingIntegration()

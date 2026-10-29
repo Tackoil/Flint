@@ -143,6 +143,8 @@ final class LauncherHeaderFooter {
     private let precisionKeys = Appearance.stack([KeyboardHintView(.leftArrow), KeyboardHintView(.rightArrow)], spacing: 4)
     private lazy var precisionControls = Appearance.stack([precisionLabel, precisionKeys], spacing: 4)
     private let timestampUnitHint = KeyboardHintView(.rightArrow, label: "ms")
+    private var footerContent: NSView?
+    private var actionGroup: ActionGroupView?
 
     func searchBar() -> NSView {
         NSLayoutConstraint.activate([
@@ -189,6 +191,8 @@ final class LauncherHeaderFooter {
         timestampUnitHint.isHidden = true
         let actions = Appearance.actionGroup(content: Appearance.stack(
             [openButton, navigation, precisionControls, roundingModeButton, timestampUnitHint], spacing: 16))
+        actions.wantsLayer = true
+        actionGroup = actions as? ActionGroupView
         settingsButton.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: "Settings")?
             .withSymbolConfiguration(.init(pointSize: 14, weight: .regular))
         settingsButton.imagePosition = .imageOnly
@@ -204,20 +208,32 @@ final class LauncherHeaderFooter {
             settingsButton.widthAnchor.constraint(equalToConstant: LauncherLayout.floatingControlSize),
             settingsButton.heightAnchor.constraint(equalToConstant: LauncherLayout.floatingControlSize)
         ])
-        return inset(Appearance.stack([settingsButton, Appearance.spacer(), actions], spacing: 13),
+        let content = Appearance.stack([settingsButton, actions], spacing: 13)
+        footerContent = content
+        return inset(content,
                      horizontal: LauncherLayout.floatingControlInset, height: LauncherLayout.footerHeight)
     }
 
     func updateActionTitle(_ title: String) {
-        (openButton as? LauncherOpenButton)?.updateTitle(title)
+        animateActionLayout {
+            (openButton as? LauncherOpenButton)?.updateTitle(title)
+        }
     }
 
     func setCalculatorMode(_ isCalculator: Bool) {
-        navigation.isHidden = isCalculator
+        animateActionLayout {
+            navigation.isHidden = isCalculator
+        }
         searchIcon.setCalculatorMode(isCalculator)
     }
 
     func updatePrecision(_ decimalPlaces: Int?, isRounding: Bool) {
+        animateActionLayout {
+            configurePrecision(decimalPlaces, isRounding: isRounding)
+        }
+    }
+
+    private func configurePrecision(_ decimalPlaces: Int?, isRounding: Bool) {
         precisionControls.isHidden = decimalPlaces == nil || !isRounding
         precisionKeys.isHidden = !isRounding
         roundingModeButton.isHidden = decimalPlaces == nil
@@ -238,6 +254,12 @@ final class LauncherHeaderFooter {
     var isReturnKeyPressed: Bool { (openButton as? LauncherOpenButton)?.isReturnKeyPressed == true }
 
     func setTimestampUnitSwitching(_ unit: TimestampCalculation.Unit?) {
+        animateActionLayout {
+            configureTimestampUnitSwitching(unit)
+        }
+    }
+
+    private func configureTimestampUnitSwitching(_ unit: TimestampCalculation.Unit?) {
         timestampUnitHint.isHidden = unit == nil
         guard let unit else { return }
         let hint: KeyboardHint = unit == .seconds ? .rightArrow : .leftArrow
@@ -248,6 +270,13 @@ final class LauncherHeaderFooter {
         let help = "Switch to \(destination) (\(hint.name)). Modified arrow keys edit the input."
         timestampUnitHint.setAccessibilityLabel(help)
         timestampUnitHint.toolTip = help
+    }
+
+    private func animateActionLayout(_ updates: () -> Void) {
+        let layoutRoot = footerContent?.window?.contentView ?? footerContent?.superview
+        updates()
+        actionGroup?.needsLayout = true
+        layoutRoot?.layoutSubtreeIfNeeded()
     }
 
     private func inset(_ content: NSView, horizontal: CGFloat, height: CGFloat) -> NSView {

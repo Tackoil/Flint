@@ -113,6 +113,98 @@ final class AppearanceSurfaceView: NSView {
     }
 }
 
+private final class ActionGroupResizeAnimation: NSAnimation {
+    private let update: (CGFloat) -> Void
+
+    init(duration: TimeInterval, update: @escaping (CGFloat) -> Void) {
+        self.update = update
+        super.init(duration: duration, animationCurve: .easeInOut)
+        animationBlockingMode = .nonblocking
+        frameRate = 120
+    }
+
+    required init?(coder: NSCoder) { fatalError("Use init(duration:update:)") }
+
+    override var currentProgress: NSAnimation.Progress {
+        didSet { update(CGFloat(currentValue)) }
+    }
+}
+
+final class ActionGroupView: NSView {
+    let surface: NSView
+    private let content: NSView
+    private let viewport = NSView()
+    private var resizeAnimation: ActionGroupResizeAnimation?
+    private(set) var displayedWidth: CGFloat = 0
+    private(set) var targetWidth: CGFloat = 0
+
+    init(surface: NSView, content: NSView) {
+        self.surface = surface
+        self.content = content
+        super.init(frame: .zero)
+        wantsLayer = true
+        viewport.wantsLayer = true
+        viewport.layer?.masksToBounds = true
+        viewport.layer?.cornerRadius = LauncherLayout.floatingControlRadius
+        addSubview(surface)
+        addSubview(viewport)
+        content.translatesAutoresizingMaskIntoConstraints = false
+        viewport.addSubview(content)
+        NSLayoutConstraint.activate([
+            heightAnchor.constraint(equalToConstant: LauncherLayout.floatingControlSize),
+            content.trailingAnchor.constraint(equalTo: viewport.trailingAnchor, constant: -12),
+            content.centerYAnchor.constraint(equalTo: viewport.centerYAnchor)
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("Use init(surface:content:)") }
+
+    override func layout() {
+        super.layout()
+        let width = min(content.fittingSize.width + 26, bounds.width)
+        if width != targetWidth {
+            resize(to: width)
+        } else {
+            display(width: displayedWidth)
+        }
+    }
+
+    private func resize(to width: CGFloat) {
+        resizeAnimation?.stop()
+        resizeAnimation = nil
+        targetWidth = width
+        let duration = Appearance.launcherTransitionDuration(for: window)
+        guard displayedWidth > 0, duration > 0 else {
+            display(width: width)
+            return
+        }
+        let initialWidth = displayedWidth
+        let animation = ActionGroupResizeAnimation(duration: duration) { [weak self] progress in
+            self?.display(width: initialWidth + (width - initialWidth) * progress)
+        }
+        resizeAnimation = animation
+        animation.start()
+    }
+
+    private func display(width: CGFloat) {
+        displayedWidth = width
+        let frame = NSRect(x: bounds.maxX - width, y: 0, width: width, height: bounds.height)
+        // Resize the actual native glass on each frame. Animating only its backing
+        // layer leaves the glass renderer and its hit-testing geometry out of sync.
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = 0
+            context.allowsImplicitAnimation = false
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            surface.frame = frame
+            viewport.frame = frame
+            surface.layoutSubtreeIfNeeded()
+            viewport.layoutSubtreeIfNeeded()
+            CATransaction.commit()
+        }
+    }
+}
+
 enum Appearance {
     static let muted = NSColor.secondaryLabelColor
     static let text = NSColor.labelColor
@@ -191,23 +283,14 @@ enum Appearance {
             glass.style = .regular
             glass.cornerRadius = LauncherLayout.floatingControlRadius
             if #available(macOS 27.0, *) { glass.effectIsInteractive = true }
-            glass.contentView = content
             surface = glass
         } else {
             let background = AppearanceSurfaceView(fillColor: .quaternaryLabelColor, borderColor: .separatorColor)
             background.layer?.cornerRadius = LauncherLayout.floatingControlRadius
             background.layer?.borderWidth = 0.5
-            background.addSubview(content)
             surface = background
         }
-        content.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            surface.heightAnchor.constraint(equalToConstant: LauncherLayout.floatingControlSize),
-            content.leadingAnchor.constraint(equalTo: surface.leadingAnchor, constant: 14),
-            content.trailingAnchor.constraint(equalTo: surface.trailingAnchor, constant: -12),
-            content.centerYAnchor.constraint(equalTo: surface.centerYAnchor)
-        ])
-        return surface
+        return ActionGroupView(surface: surface, content: content)
     }
 
     static func separator() -> NSView {

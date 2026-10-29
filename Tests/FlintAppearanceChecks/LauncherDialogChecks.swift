@@ -1,6 +1,112 @@
 import AppKit
 
 @MainActor
+func checkActionGroupResizing() {
+    _ = NSApplication.shared
+    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 80),
+                          styleMask: [.borderless], backing: .buffered, defer: false)
+    let header = LauncherHeaderFooter()
+    let footer = header.footer()
+    footer.wantsLayer = true
+    footer.frame = NSRect(x: 0, y: 0, width: 760, height: 56)
+    window.contentView!.addSubview(footer)
+    window.makeKeyAndOrderFront(nil)
+    defer { window.orderOut(nil) }
+    window.contentView!.layoutSubtreeIfNeeded()
+    RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+    let row = header.settingsButton.superview as! NSStackView
+    let actions = row.arrangedSubviews.last as! ActionGroupView
+    let updates: [() -> Void] = [
+        { header.updateActionTitle("Run Action") },
+        { header.updateActionTitle("Open Application") },
+        {
+            header.setCalculatorMode(true)
+            header.updateActionTitle("Copy Answer")
+            header.updatePrecision(10, isRounding: true)
+        },
+        { header.updatePrecision(10, isRounding: false) },
+        { header.updatePrecision(10, isRounding: true) },
+        {
+            header.updatePrecision(nil, isRounding: false)
+            header.setTimestampUnitSwitching(.seconds)
+        },
+        { header.setTimestampUnitSwitching(.milliseconds) }
+    ]
+    for update in updates {
+        let initialFrame = actions.surface.frame
+        update()
+        checkActionGroupTransition(actions, from: initialFrame)
+    }
+    header.updatePrecision(10, isRounding: true)
+    RunLoop.current.run(until: Date().addingTimeInterval(0.06))
+    let interruptedFrame = actions.surface.frame
+    header.updatePrecision(nil, isRounding: false)
+    let restartedFrame = actions.surface.frame
+    precondition(abs(restartedFrame.width - interruptedFrame.width) < 2,
+                 "Interrupting an action group resize must keep its displayed width")
+    checkActionGroupTransition(actions, from: interruptedFrame)
+    checkRapidRoundingChanges(header, actions: actions)
+    print("PASS: action group width animates for action titles, precision modes and timestamp units with a fixed right edge")
+    print("PASS: interrupted action group resizing continues from its displayed width")
+}
+
+@MainActor
+private func checkRapidRoundingChanges(_ header: LauncherHeaderFooter, actions: ActionGroupView) {
+    header.setTimestampUnitSwitching(nil)
+    header.updatePrecision(10, isRounding: true)
+    RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+    for isRounding in [false, true, false, true, false, true] {
+        let initialWidth = actions.displayedWidth
+        header.updatePrecision(10, isRounding: isRounding)
+        precondition(actions.displayedWidth == initialWidth, "Changing rounding mode must not jump the glass width")
+        for _ in 0..<4 {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.015))
+            checkActionGroupSurfaceEdges(actions, expectedRightEdge: actions.bounds.maxX)
+            precondition(actions.displayedWidth >= min(initialWidth, actions.targetWidth) - 1)
+            precondition(actions.displayedWidth <= max(initialWidth, actions.targetWidth) + 1)
+        }
+    }
+    RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+    precondition(abs(actions.displayedWidth - actions.targetWidth) < 1)
+    print("PASS: rapid Edit expression ↔ Round result reversals resize the actual glass without jumping or drifting")
+}
+
+@MainActor
+private func checkActionGroupTransition(_ actions: ActionGroupView, from initialFrame: NSRect) {
+    var displayedWidths: [CGFloat] = []
+    for _ in 0..<20 {
+        RunLoop.current.run(until: Date().addingTimeInterval(0.015))
+        let displayedFrame = actions.surface.frame
+        precondition(abs(displayedFrame.maxX - initialFrame.maxX) < 1, "The action group's right edge moved")
+        precondition(actions.subviews.last!.frame == displayedFrame, "Content clipping must follow the actual glass")
+        checkActionGroupSurfaceEdges(actions, expectedRightEdge: initialFrame.maxX)
+        displayedWidths.append(displayedFrame.width)
+    }
+    let targetFrame = actions.surface.frame
+    precondition(abs(initialFrame.width - targetFrame.width) > 1,
+                 "Expected action group width to change: \(initialFrame) → \(targetFrame)")
+    let sawIntermediateWidth = displayedWidths.contains {
+        $0 > min(initialFrame.width, targetFrame.width) + 0.1 &&
+        $0 < max(initialFrame.width, targetFrame.width) - 0.1
+    }
+    precondition(sawIntermediateWidth || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+                 "The action group skipped its width animation")
+    precondition(abs(actions.displayedWidth - actions.targetWidth) < 1)
+}
+
+@MainActor
+private func checkActionGroupSurfaceEdges(_ actions: ActionGroupView, expectedRightEdge: CGFloat) {
+    let parent = actions.layer!.presentation() ?? actions.layer!
+    for surface in [actions.surface] + actions.surface.subviews {
+        guard let layer = surface.layer else { continue }
+        let displayed = layer.presentation() ?? layer
+        let frame = parent.convert(displayed.bounds, from: displayed)
+        precondition(abs(frame.maxX - expectedRightEdge) < 1,
+                     "The visible action group surface moved: \(frame.maxX), expected \(expectedRightEdge)")
+    }
+}
+
+@MainActor
 func checkLauncherDialog() {
     _ = NSApplication.shared
     let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),

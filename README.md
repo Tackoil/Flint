@@ -77,6 +77,8 @@ Search for **Eject All Disks**, **Empty Trash**, or **Show Desktop**, then click
 
 Dialogs use untinted regular Liquid Glass on macOS 26 and later, with a standard popover material on older versions, and dim only the inside of the rounded launcher. Native macOS push buttons show Escape and Return key hints: Escape cancels and Return confirms (or acknowledges an error). Keyboard hints use consistent rounded rectangle outlines and symbols in the launcher footer, dialogs, and Settings launcher shortcut control. Labeled hints keep a consistent gap between the action text and the outlined key. Each key runs its labeled action directly; dialog buttons have no selection or navigation state. Closing a dialog returns focus to search. Action icons are smaller than application icons while keeping the result text aligned.
 
+The **action group** is the pill in the footer's bottom-right corner. Its width animates as action titles, precision controls, or timestamp unit hints change, keeping its right edge fixed. Reduce Motion disables this animation.
+
 ## Settings
 
 Settings uses a resizable sidebar layout with a compact **General** card for **Open at Login**, **Show in Menu Bar**, **Switch to ABC**, and **Launcher Shortcut**. The launcher shortcut uses the shared keyboard component to show each key as an outlined keycap, with a reset button beside it. Settings follows the system’s light or dark appearance.
