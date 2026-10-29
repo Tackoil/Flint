@@ -15,8 +15,10 @@ xcrun swiftc -swift-version 5 -parse-as-library \
     "$project_dir/Flint/ApplicationsViewController.swift" \
     "$project_dir/Flint/LauncherWindowController.swift" \
     "$project_dir/Flint/CalculatorResultView.swift" \
+    "$project_dir/Flint/ColorResultView.swift" \
     "$project_dir"/Sources/FlintCore/*.swift \
     "$project_dir/Tests/FlintAppearanceChecks/CalculatorChecks.swift" \
+    "$project_dir/Tests/FlintAppearanceChecks/ColorChecks.swift" \
     "$project_dir/Tests/FlintAppearanceChecks/RoundingChecks.swift" \
     "$project_dir/Tests/FlintAppearanceChecks/LauncherDialogChecks.swift" \
     "$project_dir/Tests/FlintAppearanceChecks/main.swift" \

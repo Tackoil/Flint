@@ -1,6 +1,8 @@
 import AppKit
 
 final class CalculatorResultView: NSView {
+    private let colorView = ColorResultView()
+    private var calculationViews: [NSView] = []
     private let expressionLabel = Appearance.label("", size: 36, weight: .medium, color: .labelColor)
     private let answerLabel = Appearance.label("", size: 36, weight: .medium, color: .labelColor)
     private let localTimeLabel = Appearance.label("", size: 12, color: .secondaryLabelColor)
@@ -37,7 +39,15 @@ final class CalculatorResultView: NSView {
             item.translatesAutoresizingMaskIntoConstraints = false
             addSubview(item)
         }
+        calculationViews = [arrow, expression, answer]
+        colorView.translatesAutoresizingMaskIntoConstraints = false
+        colorView.isHidden = true
+        addSubview(colorView)
         NSLayoutConstraint.activate([
+            colorView.leadingAnchor.constraint(equalTo: leadingAnchor),
+            colorView.trailingAnchor.constraint(equalTo: trailingAnchor),
+            colorView.topAnchor.constraint(equalTo: topAnchor),
+            colorView.bottomAnchor.constraint(equalTo: bottomAnchor),
             arrow.centerXAnchor.constraint(equalTo: centerXAnchor),
             arrow.centerYAnchor.constraint(equalTo: centerYAnchor),
             arrow.widthAnchor.constraint(equalToConstant: 24),
@@ -62,23 +72,38 @@ final class CalculatorResultView: NSView {
     required init?(coder: NSCoder) { fatalError("Use init(frame:)") }
 
     func configure(_ result: CalculatorResult) {
-        switch result {
-        case .numeric(let calculation):
-            expressionLabel.stringValue = calculation.formattedExpression
-            answerLabel.stringValue = calculation.formattedAnswer()
-            expressionLabel.font = .systemFont(ofSize: 36, weight: .medium)
-            expressionHeight.constant = 56
-            answerLabel.font = .systemFont(ofSize: 36, weight: .medium)
-            answerHeight.constant = 56
-            localTimeLabel.isHidden = true
-            answerTimeLabel.isHidden = true
-            sourceUnitLabel.isHidden = true
-            answerUnitLabel.isHidden = true
-            setAccessibilityLabel("Calculator: \(calculation.expression). \(calculation.answer)")
-            toolTip = calculation.answer + (calculation.hasMoreFractionalDigits ? "… Press Right Arrow for more digits." : "")
-        case .timestamp(let calculation):
-            configureTimestamp(calculation)
-        }
+        let color = colorConversion(from: result)
+        colorView.isHidden = color == nil
+        calculationViews.forEach { $0.isHidden = color != nil }
+        if case .numeric(let calculation) = result { configureNumeric(calculation) }
+        if case .timestamp(let calculation) = result { configureTimestamp(calculation) }
+        if let color { configureColor(color) }
+    }
+
+    private func configureNumeric(_ calculation: NumericCalculation) {
+        expressionLabel.stringValue = calculation.formattedExpression
+        answerLabel.stringValue = calculation.formattedAnswer()
+        expressionLabel.font = .systemFont(ofSize: 36, weight: .medium)
+        expressionHeight.constant = 56
+        answerLabel.font = .systemFont(ofSize: 36, weight: .medium)
+        answerHeight.constant = 56
+        localTimeLabel.isHidden = true
+        answerTimeLabel.isHidden = true
+        sourceUnitLabel.isHidden = true
+        answerUnitLabel.isHidden = true
+        setAccessibilityLabel("Calculator: \(calculation.expression). \(calculation.answer)")
+        toolTip = calculation.answer + (calculation.hasMoreFractionalDigits ? "… Press Right Arrow for more digits." : "")
+    }
+
+    private func configureColor(_ conversion: ColorConversion) {
+        colorView.configure(conversion)
+        setAccessibilityLabel("Color conversion: \(conversion.expression). \(conversion.format.title): \(conversion.answer)")
+        toolTip = conversion.answer
+    }
+
+    private func colorConversion(from result: CalculatorResult) -> ColorConversion? {
+        guard case .color(let color) = result else { return nil }
+        return color
     }
 
     private func configureTimestamp(_ calculation: TimestampCalculation) {

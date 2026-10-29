@@ -60,6 +60,7 @@ struct AppearanceChecks {
         checkKeyboardHintFeedback()
         checkActionGroupResizing()
         checkLauncherRowIcons()
+        checkColorConversionIntegration()
         checkCalculatorIntegration()
         checkNumericRoundingIntegration()
         checkRoundingModeSwitches()

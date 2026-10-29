@@ -36,6 +36,8 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     private let scrollView = LauncherResultsScrollView()
     private let calculatorView = CalculatorResultView()
     private var calculation: CalculatorResult?
+    private var colorOutputFormat: ColorConversion.Format?
+    private var isColorSwitchingEnabled = true
     private var isRoundingEnabled = true
     private var timestampOutputUnit = TimestampCalculation.Unit.seconds
     private let statusLabel = Appearance.label("Finding your applications…", size: 14)
@@ -70,6 +72,8 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         chrome.settingsButton.action = #selector(showSettings)
         chrome.roundingModeButton.target = self
         chrome.roundingModeButton.action = #selector(toggleRoundingMode)
+        chrome.colorModeButton.target = self
+        chrome.colorModeButton.action = #selector(toggleColorSwitchingMode)
         refreshApplications()
     }
 
@@ -175,6 +179,8 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     func resetSearch() {
         _ = view
         isRoundingEnabled = true
+        colorOutputFormat = nil
+        isColorSwitchingEnabled = true
         chrome.searchField.stringValue = ""
         applyQuery()
         view.window?.makeFirstResponder(chrome.searchField)
@@ -186,7 +192,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         let query = chrome.searchField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         let isExpanded = !query.isEmpty
         let items = applications.map(LauncherItem.application) + SystemAction.allCases.map(LauncherItem.action)
-        let evaluated = Calculator.evaluate(query, timestampUnit: timestampOutputUnit)
+        let evaluated = Calculator.evaluate(query, timestampUnit: timestampOutputUnit, colorFormat: colorOutputFormat)
         if case .numeric(let previous) = calculation, case .numeric(let current) = evaluated,
            previous.expression == current.expression, previous.value == current.value {
             calculation = .numeric(previous)
@@ -197,7 +203,8 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         calculatorView.isHidden = calculation == nil
         scrollView.isHidden = calculation != nil
         if let calculation { calculatorView.configure(calculation) }
-        chrome.setCalculatorMode(calculation != nil)
+        chrome.setCalculatorMode(calculation != nil, isColor: colorConversion != nil)
+        chrome.setColorFormatSwitching(colorConversion?.format, isEnabled: isColorSwitchingEnabled)
         chrome.updatePrecision(calculation?.decimalPlaceCount, isRounding: isRoundingEnabled)
         chrome.setTimestampUnitSwitching(canSwitchTimestampUnit ? timestampOutputUnit : nil)
         chrome.openButton.isEnabled = (calculation != nil || !results.isEmpty) && !isOpening
@@ -271,13 +278,23 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
 
     private func updateSelection() {
         let row = tableView.selectedRow
-        chrome.updateActionTitle(calculation != nil ? "Copy Answer" : selectedActionTitle(row: row))
+        chrome.updateActionTitle(conversionActionTitle(row: row))
         let visible = tableView.rows(in: tableView.visibleRect)
         guard visible.location != NSNotFound else { return }
         for index in visible.location..<NSMaxRange(visible) {
             let cell = tableView.view(atColumn: 0, row: index, makeIfNecessary: false) as? ApplicationRowContent
             cell?.updateSelection(index == row)
         }
+    }
+
+    private func conversionActionTitle(row: Int) -> String {
+        if colorConversion != nil { return "Copy Color" }
+        return calculation != nil ? "Copy Answer" : selectedActionTitle(row: row)
+    }
+
+    private var colorConversion: ColorConversion? {
+        guard case .color(let color) = calculation else { return nil }
+        return color
     }
 
     @objc private func openClickedApplication() {
@@ -399,6 +416,8 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     @objc private func showSettings() { onShowSettings?() }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        if handleColorModeCommand(commandSelector) { return true }
+        if handleColorFormatCommand(commandSelector) { return true }
         if handleTimestampUnitCommand(commandSelector) { return true }
         if handleRoundingModeCommand(commandSelector) { return true }
         if handlePrecisionCommand(commandSelector) { return true }
@@ -412,6 +431,43 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         ]
         guard let action = actions[commandSelector] else { return false }
         action()
+        return true
+    }
+
+    private func handleColorModeCommand(_ selector: Selector) -> Bool {
+        let modes: [Selector: Bool] = [
+            #selector(NSResponder.moveUp(_:)): false, #selector(NSResponder.moveDown(_:)): true
+        ]
+        guard let enabled = modes[selector], colorConversion != nil, !isPresentingDialog, !isOpening,
+              NSApp.currentEvent?.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty != false else {
+            return false
+        }
+        setColorSwitchingEnabled(enabled)
+        return true
+    }
+
+    @objc private func toggleColorSwitchingMode() {
+        guard colorConversion != nil, !isPresentingDialog, !isOpening else { return }
+        setColorSwitchingEnabled(!isColorSwitchingEnabled)
+    }
+
+    private func setColorSwitchingEnabled(_ enabled: Bool) {
+        isColorSwitchingEnabled = enabled
+        chrome.setColorFormatSwitching(colorConversion?.format, isEnabled: enabled)
+        if chrome.searchField.currentEditor() == nil { view.window?.makeFirstResponder(chrome.searchField) }
+    }
+
+    private func handleColorFormatCommand(_ selector: Selector) -> Bool {
+        let offsets: [Selector: Int] = [
+            #selector(NSResponder.moveLeft(_:)): -1, #selector(NSResponder.moveBackward(_:)): -1,
+            #selector(NSResponder.moveRight(_:)): 1, #selector(NSResponder.moveForward(_:)): 1
+        ]
+        guard let offset = offsets[selector], let color = colorConversion, isColorSwitchingEnabled, !isPresentingDialog, !isOpening,
+              NSApp.currentEvent?.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty != false else {
+            return false
+        }
+        colorOutputFormat = color.format.shifted(by: offset)
+        applyQuery()
         return true
     }
 

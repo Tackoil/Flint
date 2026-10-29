@@ -3,11 +3,12 @@ import AppKit
 private final class LauncherSearchIcon: NSView {
     private let search = Appearance.symbol("magnifyingglass", size: 16, color: .secondaryLabelColor)
     private let calculator = Appearance.symbol("plus.forwardslash.minus", size: 16, color: .secondaryLabelColor)
-    private var isCalculator = false
+    private let color = Appearance.symbol("paintpalette", size: 16, color: .secondaryLabelColor)
+    private var mode = "search"
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        for icon in [search, calculator] {
+        for icon in [search, calculator, color] {
             icon.translatesAutoresizingMaskIntoConstraints = false
             icon.wantsLayer = true
             addSubview(icon)
@@ -22,20 +23,23 @@ private final class LauncherSearchIcon: NSView {
         calculator.setAccessibilityLabel("Calculator")
         calculator.alphaValue = 0
         calculator.setAccessibilityHidden(true)
+        color.setAccessibilityLabel("Color conversion")
+        color.alphaValue = 0
+        color.setAccessibilityHidden(true)
     }
 
     required init?(coder: NSCoder) { fatalError("Use init(frame:)") }
 
-    func setCalculatorMode(_ enabled: Bool) {
-        guard isCalculator != enabled else { return }
-        isCalculator = enabled
-        search.setAccessibilityHidden(enabled)
-        calculator.setAccessibilityHidden(!enabled)
+    func setCalculatorMode(_ enabled: Bool, isColor: Bool) {
+        let next = isColor ? "color" : (enabled ? "calculator" : "search")
+        guard mode != next else { return }
+        mode = next
+        let icons = [(search, "search"), (calculator, "calculator"), (color, "color")]
+        icons.forEach { $0.0.setAccessibilityHidden($0.1 != next) }
         NSAnimationContext.runAnimationGroup { context in
             context.duration = Appearance.launcherTransitionDuration(for: window)
             context.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
-            search.animator().alphaValue = enabled ? 0 : 1
-            calculator.animator().alphaValue = enabled ? 1 : 0
+            icons.forEach { $0.0.animator().alphaValue = $0.1 == next ? 1 : 0 }
         }
     }
 }
@@ -92,7 +96,7 @@ private final class LauncherOpenButton: NSButton {
 
 }
 
-private final class LauncherRoundingModeButton: NSButton {
+private final class LauncherModeButton: NSButton {
     private let content = KeyboardHintView(.upArrow, label: "Edit expression")
 
     override var acceptsFirstResponder: Bool { false }
@@ -116,8 +120,16 @@ private final class LauncherRoundingModeButton: NSButton {
     required init?(coder: NSCoder) { fatalError("Use init()") }
 
     func update(isRounding: Bool) {
-        let hint: KeyboardHint = isRounding ? .upArrow : .downArrow
-        let label = isRounding ? "Edit expression" : "Round result"
+        update(hint: isRounding ? .upArrow : .downArrow,
+               label: isRounding ? "Edit expression" : "Round result")
+    }
+
+    func update(isSwitchingColors: Bool) {
+        update(hint: isSwitchingColors ? .upArrow : .downArrow,
+               label: isSwitchingColors ? "Edit color" : "Switch format")
+    }
+
+    private func update(hint: KeyboardHint, label: String) {
         if content.hint != hint { content.hint = hint }
         if content.label != label { content.label = label }
         setAccessibilityLabel(label)
@@ -134,7 +146,8 @@ final class LauncherHeaderFooter {
     let searchField = NSTextField()
     let openButton: NSButton = LauncherOpenButton()
     let settingsButton = Appearance.button("")
-    let roundingModeButton: NSButton = LauncherRoundingModeButton()
+    let roundingModeButton: NSButton = LauncherModeButton()
+    let colorModeButton: NSButton = LauncherModeButton()
     private let searchIcon = LauncherSearchIcon()
     private let navigation = Appearance.stack([
         Appearance.label("Navigate", size: 12, color: .labelColor), KeyboardHintView(.upArrow), KeyboardHintView(.downArrow)
@@ -142,6 +155,9 @@ final class LauncherHeaderFooter {
     private let precisionLabel = Appearance.label("", size: 12, color: .labelColor)
     private let precisionKeys = Appearance.stack([KeyboardHintView(.leftArrow), KeyboardHintView(.rightArrow)], spacing: 4)
     private lazy var precisionControls = Appearance.stack([precisionLabel, precisionKeys], spacing: 4)
+    private let previousColorFormat = KeyboardHintView(.leftArrow)
+    private let nextColorFormat = KeyboardHintView(.rightArrow)
+    private lazy var colorFormatControls = Appearance.stack([previousColorFormat, nextColorFormat], spacing: 12)
     private let timestampUnitHint = KeyboardHintView(.rightArrow, label: "ms")
     private var footerContent: NSView?
     private var actionGroup: ActionGroupView?
@@ -189,8 +205,10 @@ final class LauncherHeaderFooter {
         precisionControls.isHidden = true
         roundingModeButton.isHidden = true
         timestampUnitHint.isHidden = true
+        colorFormatControls.isHidden = true
+        colorModeButton.isHidden = true
         let actions = Appearance.actionGroup(content: Appearance.stack(
-            [openButton, navigation, precisionControls, roundingModeButton, timestampUnitHint], spacing: 16))
+            [openButton, navigation, precisionControls, roundingModeButton, timestampUnitHint, colorFormatControls, colorModeButton], spacing: 16))
         actions.wantsLayer = true
         actionGroup = actions as? ActionGroupView
         settingsButton.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: "Settings")?
@@ -220,11 +238,11 @@ final class LauncherHeaderFooter {
         }
     }
 
-    func setCalculatorMode(_ isCalculator: Bool) {
+    func setCalculatorMode(_ isCalculator: Bool, isColor: Bool = false) {
         animateActionLayout {
             navigation.isHidden = isCalculator
         }
-        searchIcon.setCalculatorMode(isCalculator)
+        searchIcon.setCalculatorMode(isCalculator, isColor: isColor)
     }
 
     func updatePrecision(_ decimalPlaces: Int?, isRounding: Bool) {
@@ -237,7 +255,7 @@ final class LauncherHeaderFooter {
         precisionControls.isHidden = decimalPlaces == nil || !isRounding
         precisionKeys.isHidden = !isRounding
         roundingModeButton.isHidden = decimalPlaces == nil
-        (roundingModeButton as? LauncherRoundingModeButton)?.update(isRounding: isRounding)
+        (roundingModeButton as? LauncherModeButton)?.update(isRounding: isRounding)
         precisionLabel.stringValue = decimalPlaces.map { places in
             let count = abs(places)
             let digits = count == 1 ? "digit" : "digits"
@@ -270,6 +288,26 @@ final class LauncherHeaderFooter {
         let help = "Switch to \(destination) (\(hint.name)). Modified arrow keys edit the input."
         timestampUnitHint.setAccessibilityLabel(help)
         timestampUnitHint.toolTip = help
+    }
+
+    func setColorFormatSwitching(_ format: ColorConversion.Format?, isEnabled: Bool) {
+        animateActionLayout {
+            configureColorFormatSwitching(format, isEnabled: isEnabled)
+        }
+    }
+
+    private func configureColorFormatSwitching(_ format: ColorConversion.Format?, isEnabled: Bool) {
+        colorModeButton.isHidden = format == nil
+        (colorModeButton as? LauncherModeButton)?.update(isSwitchingColors: isEnabled)
+        colorFormatControls.isHidden = format == nil || !isEnabled
+        guard let format else { return }
+        let previous = format.shifted(by: -1).title
+        let next = format.shifted(by: 1).title
+        if previousColorFormat.label != previous { previousColorFormat.label = previous }
+        if nextColorFormat.label != next { nextColorFormat.label = next }
+        let help = "Left switches to \(previous); Right switches to \(next). Up edits the color."
+        colorFormatControls.setAccessibilityLabel(help)
+        colorFormatControls.toolTip = help
     }
 
     private func animateActionLayout(_ updates: () -> Void) {

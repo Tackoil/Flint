@@ -24,8 +24,8 @@ func checkCalculatorIntegration() {
     precondition(copy.accessibilityLabel() == "Copy Answer")
     let labels = calculatorDescendants(of: result).compactMap { $0 as? NSTextField }
     precondition(labels.contains { $0.stringValue == "100" })
-    precondition(labels.filter { !$0.isHidden }.count == 2)
-    precondition(labels.filter { !$0.isHidden }.allSatisfy { $0.font?.pointSize == 36 })
+    precondition(labels.filter { !$0.isHiddenOrHasHiddenAncestor }.count == 2)
+    precondition(labels.filter { !$0.isHiddenOrHasHiddenAncestor }.allSatisfy { $0.font?.pointSize == 36 })
     precondition(labels.contains { $0.stringValue == "(12 + 8) × 5" })
     precondition(result.frame.width == 760 && result.frame.height < 180 && result.frame.height > 80,
                  "Calculator frame: \(result.frame); root: \(controller.view.frame)")
@@ -54,7 +54,7 @@ func checkCalculatorIntegration() {
     precondition(mode == .results && calculatorIcon.alphaValue == 0 && searchIcon.alphaValue == 1)
     search.stringValue = "200*15%"
     controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
-    precondition(mode == .calculator && labels.filter { !$0.isHidden }.allSatisfy { $0.font?.pointSize == 36 })
+    precondition(mode == .calculator && labels.filter { !$0.isHiddenOrHasHiddenAncestor }.allSatisfy { $0.font?.pointSize == 36 })
     controller.resetSearch()
     precondition(mode == .collapsed && result.isHidden && !copy.isEnabled)
     precondition(calculatorIcon.alphaValue == 0 && searchIcon.alphaValue == 1)
@@ -134,7 +134,7 @@ private func checkReverseTimestamp(_ controller: ApplicationsViewController, sea
     let result = calculatorDescendants(of: controller.view).compactMap { $0 as? CalculatorResultView }.first!
     let labels = calculatorDescendants(of: result).compactMap { $0 as? NSTextField }
     let zulu = labels.first { $0.stringValue == expected }!
-    let local = labels.first { !$0.isHidden && $0.stringValue == TimestampCalculation.evaluate(query)!.localTimeHint() }!
+    let local = labels.first { !$0.isHiddenOrHasHiddenAncestor && $0.stringValue == TimestampCalculation.evaluate(query)!.localTimeHint() }!
     precondition(!local.isHidden && local.superview === zulu.superview && local.frame.minY < zulu.frame.minY)
     let calculation = TimestampCalculation.evaluate(query)!
     precondition(labels.contains { $0.stringValue == calculation.unixValue })
@@ -150,7 +150,7 @@ private func checkTimestampUnitLabel(_ controller: ApplicationsViewController, s
     search.stringValue = "2024-03-15T14:30:00.123456789Z"
     controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
     let views = calculatorDescendants(of: controller.view)
-    let unit = views.compactMap { $0 as? NSTextField }.first { !$0.isHidden && $0.stringValue == "Unix seconds" }!
+    let unit = views.compactMap { $0 as? NSTextField }.first { !$0.isHiddenOrHasHiddenAncestor && $0.stringValue == "Unix seconds" }!
     precondition(!unit.isHidden && !unit.isEditable)
     precondition(!views.contains { $0 is NSSegmentedControl })
     let editor = NSTextView()
@@ -160,7 +160,7 @@ private func checkTimestampUnitLabel(_ controller: ApplicationsViewController, s
     controller.copyCalculationAnswer(to: pasteboard)
     precondition(pasteboard.string(forType: .string) == "1710513000123")
     let labels = calculatorDescendants(of: controller.view).compactMap { $0 as? NSTextField }
-    precondition(labels.contains { $0.stringValue == "1710513000123" && !$0.isHidden })
+    precondition(labels.contains { $0.stringValue == "1710513000123" && !$0.isHiddenOrHasHiddenAncestor })
     precondition(controller.control(search, textView: editor, doCommandBy: #selector(NSResponder.moveLeft(_:))))
     precondition(unit.stringValue == "Unix seconds")
     controller.copyCalculationAnswer(to: pasteboard)
@@ -184,7 +184,7 @@ func checkTimestampKeyboardSwitching() {
     controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
     let views = calculatorDescendants(of: controller.view)
     let hint = views.compactMap { $0 as? KeyboardHintView }.first { $0.label == "ms" }!
-    let unit = views.compactMap { $0 as? NSTextField }.first { !$0.isHidden && $0.stringValue == "Unix seconds" }!
+    let unit = views.compactMap { $0 as? NSTextField }.first { !$0.isHiddenOrHasHiddenAncestor && $0.stringValue == "Unix seconds" }!
     precondition(!hint.isHiddenOrHasHiddenAncestor && !unit.isHidden && hint.hint == .rightArrow)
     let pasteboard = NSPasteboard.withUniqueName()
     defer { pasteboard.releaseGlobally() }

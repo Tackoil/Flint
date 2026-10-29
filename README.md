@@ -69,6 +69,14 @@ Entering `1710513000` converts seconds to Zulu; `1710513000123` automatically co
 
 Your local date and time, including its UTC offset at that instant, appears as a hint beneath the Zulu timestamp in either direction. Zulu timestamps may include up to nine fractional digits; these remain visible in the source and local-time hint. Unix answers use whole seconds or milliseconds, dropping any finer precision without rounding. Unix input must be a non-negative integer, with an optional leading `+`, and resolve to a date earlier than year 10000. Fractional or negative Unix input, Zulu timestamps before `1970-01-01T00:00:00Z`, incomplete timestamps, impossible dates, and timestamps without the `Z` suffix stay in normal search.
 
+## Color Conversion
+
+Type a color into search to preview it and copy it in another format. Flint recognizes 3, 4, 6, and 8 digit hex colors (`#f63`, `#ff636380`); `rgb()` and `rgba()` with commas or spaces (`rgb(255, 99, 99)`, `rgb(255 99 99 / 50%)`); `hsl()` and `hsla()`; and `hwb()`, `lab()`, `lch()`, `oklab()`, and `oklch()`.
+
+A compact swatch previews the color over a checkerboard so transparency stays visible. The selected output appears beside it, followed by dimmer upcoming formats in a horizontal strip that fades at the right edge. Press **Left Arrow** or **Right Arrow** to cycle through **HEX → RGB → HSL → HWB → LAB → LCH → OKLAB → OKLCH**, wrapping at either end. The output strip slides between formats and fades the selected format into focus; Reduce Motion disables this animation. Press **Return** or click **Copy Color** to copy the displayed value and dismiss Flint. The footer labels each arrow with its destination format: when RGB is selected, it shows **HEX ←** and **HSL →**. Press **Up Arrow** or click **Edit color ↑** to move the cursor with Left/Right. Press **Down Arrow** or click **Switch format ↓** to resume format switching. Entering editing mode keeps the selected output format and copy value; editing mode also survives incomplete color input. Reopening Flint enables format switching again. Modified arrows still edit the search text. Hex input starts with RGB output; other inputs start with HEX. A format you select stays selected while you use the launcher; reopening resets the default.
+
+Alpha is included in every output when the color is transparent. Hex rounds each channel to 8 bits. Lab and OKLab conversions retain colors outside sRGB; the preview and HEX/RGB/HSL/HWB outputs clip to sRGB and show a hint when clipping occurs. Invalid or incomplete colors stay in normal search. Conversions run offline.
+
 ## Actions
 
 Search for **Eject All Disks**, **Empty Trash**, or **Show Desktop**, then click the result or press Return. Actions appear alongside applications with an **Action** label and a **Run Action** button.
@@ -103,4 +111,4 @@ sh scripts/check-appearance.sh
 cognitive --threshold 15 Sources Flint Tests
 ```
 
-This version contains application search and launching, numeric calculations, system actions, and shortcut settings.
+This version contains application search and launching, numeric calculations, color conversion, system actions, and shortcut settings.
