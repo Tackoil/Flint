@@ -42,6 +42,8 @@ final class ApplicationDelegate: NSObject, NSApplicationDelegate {
 
         let fileItem = menu.addItem(withTitle: "File", action: nil, keyEquivalent: "")
         let fileMenu = NSMenu(title: "File")
+        fileMenu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        fileMenu.addItem(.separator())
         let refresh = fileMenu.addItem(withTitle: "Refresh Applications", action: #selector(refreshApplications), keyEquivalent: "r")
         refresh.target = self
         fileItem.submenu = fileMenu

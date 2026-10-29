@@ -61,6 +61,8 @@ Turn on **Open at Login** in General to start Flint automatically when you log i
 
 Open Settings with **Command–Comma**, the gear button in the launcher footer, or **Settings…** in the flame menu. Click the shortcut button and press your own key combination. Use Command, Option, or Control with a key (and optionally Shift), or a function key such as F6. Escape cancels recording, and Tab leaves the recorder. Recording also cancels if Settings loses focus or closes. The active launcher hotkey is temporarily suspended during recording so you can record the same combination again.
 
+Close Settings with **Command–W** or the red close button. Flint keeps running so you can open the launcher again.
+
 Changes apply immediately, update the menu shortcut, and persist between launches. Previously saved shortcuts carry over. The reset button beside the shortcut returns to Command–Space. A registration failure is shown in Settings and keeps the previous preference selected.
 
 The `--keep-open` argument is a testing option only; it is not shown or saved in Settings.
