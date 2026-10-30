@@ -32,20 +32,26 @@ struct SystemActionExecutor {
         guard failures.isEmpty else { throw ActionError(message: failures.joined(separator: "\n")) }
     }
 
-    static func isEjectableVolume(isInternal: Bool?, isEjectable: Bool?, isRemovable: Bool?) -> Bool {
-        isInternal != true && (isEjectable == true || isRemovable == true)
+    static func isEjectableVolume(isInternal: Bool?, isEjectable: Bool?, isRemovable: Bool?,
+                                 isBrowsable: Bool?) -> Bool {
+        isBrowsable == true && isInternal != true && (isEjectable == true || isRemovable == true)
     }
 
     private static func ejectableVolumes() throws -> [URL] {
-        let keys: Set<URLResourceKey> = [.volumeIsEjectableKey, .volumeIsRemovableKey, .volumeIsInternalKey]
-        guard let volumes = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: Array(keys)) else {
+        let keys: Set<URLResourceKey> = [
+            .volumeIsEjectableKey, .volumeIsRemovableKey, .volumeIsInternalKey, .volumeIsBrowsableKey
+        ]
+        guard let volumes = FileManager.default.mountedVolumeURLs(
+            includingResourceValuesForKeys: Array(keys), options: .skipHiddenVolumes
+        ) else {
             throw ActionError(message: "Couldn’t find mounted disks. Try again.")
         }
         return try volumes.filter { volume in
             let values = try volume.resourceValues(forKeys: keys)
             return isEjectableVolume(isInternal: values.volumeIsInternal,
                                      isEjectable: values.volumeIsEjectable,
-                                     isRemovable: values.volumeIsRemovable)
+                                     isRemovable: values.volumeIsRemovable,
+                                     isBrowsable: values.volumeIsBrowsable)
         }
     }
 

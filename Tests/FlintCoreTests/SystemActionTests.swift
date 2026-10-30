@@ -73,11 +73,30 @@ struct SystemActionExecutorTests {
     }
 
     @Test func internalAndNonremovableVolumesAreExcluded() {
-        #expect(!SystemActionExecutor.isEjectableVolume(isInternal: true, isEjectable: true, isRemovable: true))
-        #expect(SystemActionExecutor.isEjectableVolume(isInternal: false, isEjectable: true, isRemovable: false))
-        #expect(!SystemActionExecutor.isEjectableVolume(isInternal: false, isEjectable: false, isRemovable: false))
-        #expect(SystemActionExecutor.isEjectableVolume(isInternal: false, isEjectable: false, isRemovable: true))
-        #expect(!SystemActionExecutor.isEjectableVolume(isInternal: nil, isEjectable: nil, isRemovable: nil))
+        #expect(!SystemActionExecutor.isEjectableVolume(isInternal: true, isEjectable: true,
+                                                       isRemovable: true, isBrowsable: true))
+        #expect(SystemActionExecutor.isEjectableVolume(isInternal: false, isEjectable: true,
+                                                      isRemovable: false, isBrowsable: true))
+        #expect(!SystemActionExecutor.isEjectableVolume(isInternal: false, isEjectable: false,
+                                                       isRemovable: false, isBrowsable: true))
+        #expect(SystemActionExecutor.isEjectableVolume(isInternal: false, isEjectable: false,
+                                                      isRemovable: true, isBrowsable: true))
+        #expect(!SystemActionExecutor.isEjectableVolume(isInternal: nil, isEjectable: nil,
+                                                       isRemovable: nil, isBrowsable: true))
+    }
+
+    @Test(arguments: [false, nil] as [Bool?])
+    func volumesMustBeBrowsableToEject(isBrowsable: Bool?) {
+        // CoreSimulator reports an unknown internal status and both ejectable/removable flags.
+        #expect(!SystemActionExecutor.isEjectableVolume(isInternal: nil, isEjectable: true,
+                                                       isRemovable: true, isBrowsable: isBrowsable))
+        #expect(!SystemActionExecutor.isEjectableVolume(isInternal: false, isEjectable: true,
+                                                       isRemovable: true, isBrowsable: isBrowsable))
+    }
+
+    @Test func browsableDiskImagesWithUnknownInternalStatusRemainEjectable() {
+        #expect(SystemActionExecutor.isEjectableVolume(isInternal: nil, isEjectable: true,
+                                                      isRemovable: true, isBrowsable: true))
     }
 
     @Test func actionErrorsPropagateToTheCaller() async {
