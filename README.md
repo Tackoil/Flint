@@ -46,6 +46,12 @@ The launcher opens as a compact search bar. Type to expand the application resul
 
 Flint also has a flame icon in the menu bar with **Show Flint**, **Settings…**, and **Quit Flint** actions. If another app has reserved the launcher shortcut, use the menu bar to open Flint. Clicking outside the launcher dismisses it.
 
+## QR Code Generator
+
+Search for **QR Code Generator** (or **qr**) and press **Tab**, **Return**, or click **Generate QR Code**. Type or paste text or a URL to see a centered QR code instantly. **Return** or **Copy QR Code** copies the high-resolution PNG image and dismisses Flint. The preview and copied image keep a white margin for scanning, including in dark mode.
+
+Generation works entirely offline on this Mac. Text is encoded exactly as entered, including Unicode, spaces, and line breaks, up to **2,000 UTF-8 bytes**. Empty or oversized text disables copying. While the tool is open, calculations and other launcher actions stay out of the way. Press **Escape**, click **Exit**, or press **Backspace** with empty input to return to search. Reopening Flint resets the tool.
+
 ## Translation
 
 Find the **Translate** action using normal launcher search, select it, and press **Tab**. Search supports the same prefixes, substrings, and abbreviations as other actions; there is no special trigger word. Return does not enter Translate. Flint clears the search and shows the translation icon and **Text to translate…** placeholder. Type or paste the text to translate: translation starts automatically when you pause typing for **600 ms**. The source language is detected automatically. Press **Return** or click **Copy Translation** when the result is ready to copy it and dismiss Flint. Longer translations scroll and their text can also be selected and copied.

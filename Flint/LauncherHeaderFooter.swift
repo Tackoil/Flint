@@ -77,11 +77,12 @@ private final class LauncherSearchIcon: NSView {
     private let calculator = Appearance.symbol("plus.forwardslash.minus", size: 16, color: .secondaryLabelColor)
     private let color = Appearance.symbol("paintpalette", size: 16, color: .secondaryLabelColor)
     private let translation = Appearance.symbol("character.bubble", size: 16, color: .secondaryLabelColor)
+    private let qrCode = Appearance.symbol("qrcode", size: 16, color: .secondaryLabelColor)
     private var mode = "search"
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
-        for icon in [search, calculator, color, translation] {
+        for icon in [search, calculator, color, translation, qrCode] {
             icon.translatesAutoresizingMaskIntoConstraints = false
             icon.wantsLayer = true
             addSubview(icon)
@@ -99,6 +100,9 @@ private final class LauncherSearchIcon: NSView {
         color.setAccessibilityLabel("Color conversion")
         color.alphaValue = 0
         color.setAccessibilityHidden(true)
+        qrCode.setAccessibilityLabel("QR code generator")
+        qrCode.alphaValue = 0
+        qrCode.setAccessibilityHidden(true)
         translation.setAccessibilityLabel("Translation")
         translation.alphaValue = 0
         translation.setAccessibilityHidden(true)
@@ -106,11 +110,12 @@ private final class LauncherSearchIcon: NSView {
 
     required init?(coder: NSCoder) { fatalError("Use init(frame:)") }
 
-    func setCalculatorMode(_ enabled: Bool, isColor: Bool, isTranslation: Bool) {
-        let next = isTranslation ? "translation" : (isColor ? "color" : (enabled ? "calculator" : "search"))
+    func setCalculatorMode(_ enabled: Bool, isColor: Bool, isTranslation: Bool, isQRCode: Bool) {
+        let modes = [(isQRCode, "qrCode"), (isTranslation, "translation"), (isColor, "color"), (enabled, "calculator")]
+        let next = modes.first { $0.0 }?.1 ?? "search"
         guard mode != next else { return }
         mode = next
-        let icons = [(search, "search"), (calculator, "calculator"), (color, "color"), (translation, "translation")]
+        let icons = [(search, "search"), (calculator, "calculator"), (color, "color"), (translation, "translation"), (qrCode, "qrCode")]
         icons.forEach { $0.0.setAccessibilityHidden($0.1 != next) }
         NSAnimationContext.runAnimationGroup { context in
             context.duration = Appearance.launcherTransitionDuration(for: window)
@@ -240,6 +245,7 @@ final class LauncherHeaderFooter {
     let roundingModeButton: NSButton = LauncherModeButton()
     let colorModeButton: NSButton = LauncherModeButton()
     let numberBaseModeButton: NSButton = LauncherModeButton()
+    let qrCodeExitButton: NSButton = LauncherOpenButton()
     let translationExitButton: NSButton = LauncherOpenButton()
     let translationModeButton: NSButton = LauncherModeButton()
     private let searchIcon = LauncherSearchIcon()
@@ -318,6 +324,9 @@ final class LauncherHeaderFooter {
         colorModeButton.isHidden = true
         numberBaseControls.isHidden = true
         numberBaseModeButton.isHidden = true
+        qrCodeExitButton.isHidden = true
+        (qrCodeExitButton as? LauncherOpenButton)?.updateTitle("Exit", hint: .escape)
+        qrCodeExitButton.setAccessibilityLabel("Exit QR code generator")
         translationExitButton.isHidden = true
         translationModeButton.isHidden = true
         translationLanguageControls.isHidden = true
@@ -329,7 +338,7 @@ final class LauncherHeaderFooter {
         translationExitButton.setAccessibilityLabel("Exit translation mode")
         translationExitButton.toolTip = "Return to search (Escape)"
         let actions = Appearance.actionGroup(content: Appearance.stack(
-            [openButton, useResultButton, resultBackButton, translationExitButton, navigation, precisionControls, roundingModeButton, timestampUnitHint,
+            [openButton, useResultButton, resultBackButton, translationExitButton, qrCodeExitButton, navigation, precisionControls, roundingModeButton, timestampUnitHint,
              colorFormatControls, colorModeButton, numberBaseControls, numberBaseModeButton,
              translationLanguageControls, translationModeButton], spacing: 16))
         actions.wantsLayer = true
@@ -361,12 +370,12 @@ final class LauncherHeaderFooter {
         }
     }
 
-    func setCalculatorMode(_ isCalculator: Bool, isColor: Bool = false, isTranslation: Bool = false) {
+    func setCalculatorMode(_ isCalculator: Bool, isColor: Bool = false, isTranslation: Bool = false, isQRCode: Bool = false) {
         animateActionLayout {
-            navigation.isHidden = isCalculator || isTranslation
+            navigation.isHidden = isCalculator || isTranslation || isQRCode
             useResultButton.isHidden = !isCalculator
         }
-        searchIcon.setCalculatorMode(isCalculator, isColor: isColor, isTranslation: isTranslation)
+        searchIcon.setCalculatorMode(isCalculator, isColor: isColor, isTranslation: isTranslation, isQRCode: isQRCode)
     }
 
     func setTranslationMode(_ enabled: Bool) {
@@ -374,6 +383,13 @@ final class LauncherHeaderFooter {
         animateActionLayout { translationExitButton.isHidden = !enabled }
         searchField.setAccessibilityLabel(enabled ? "Text to translate" : "Search applications, actions, calculate, or translate")
         searchField.placeholderString = enabled ? "Text to translate…" : "Search apps, actions, calculate, or translate…"
+    }
+
+    func setQRCodeMode(_ enabled: Bool) {
+        guard qrCodeExitButton.isHidden == enabled else { return }
+        animateActionLayout { qrCodeExitButton.isHidden = !enabled }
+        searchField.setAccessibilityLabel(enabled ? "Text or URL for QR code" : "Search applications, actions, calculate, or translate")
+        searchField.placeholderString = enabled ? "Text or URL for QR code…" : "Search apps, actions, calculate, or translate…"
     }
 
     func updatePrecision(_ decimalPlaces: Int?, isRounding: Bool) {

@@ -1,12 +1,13 @@
 import CoreGraphics
 
 enum LauncherDisplayMode {
-    case collapsed, calculator, results
+    case collapsed, calculator, qrCode, results
 
     var height: CGFloat {
         switch self {
         case .collapsed: return 56
         case .calculator: return 232
+        case .qrCode: return 400
         case .results: return 560
         }
     }

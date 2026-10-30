@@ -27,6 +27,11 @@ struct AppearanceChecks {
             checkTimestampKeyboardSwitching()
             return
         }
+        if ProcessInfo.processInfo.environment["FLINT_QR_ONLY"] == "1" {
+            checkQRCodeIntegration()
+            return
+        }
+        checkQRCodeIntegration()
         let content = NSView(frame: NSRect(x: 0, y: 0, width: 760, height: 560))
         let surface = Appearance.launcherSurface(content: content)
         Appearance.setLauncherCornerRadius(28, on: surface)

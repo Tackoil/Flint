@@ -36,4 +36,15 @@ struct LauncherPlacementTests {
         #expect(first.frame(height: 56).minX == 340)
         #expect(second.frame(height: 56) == CGRect(x: 2020, y: 864, width: 760, height: 56))
     }
+
+    @Test func compactQRCodeKeepsTheSameWidthAndSearchAnchor() {
+        let placement = LauncherPlacement(visibleFrame: CGRect(x: 0, y: 0, width: 1440, height: 900),
+                                          expandedSize: expandedSize)
+        let mode = LauncherDisplayMode.qrCode
+        let frame = placement.frame(height: mode.height)
+        #expect(frame == CGRect(x: 340, y: 330, width: 760, height: 400))
+        #expect(frame.maxY == placement.expandedFrame.maxY)
+        #expect(frame.midX == placement.expandedFrame.midX)
+        #expect(placement.frame(height: LauncherDisplayMode.collapsed.height).width == 760)
+    }
 }

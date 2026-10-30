@@ -48,6 +48,8 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     private let scrollView = LauncherResultsScrollView()
     private let calculatorView = CalculatorResultView()
     private let translationView = TranslationResultView()
+    private let qrCodeView = QRCodeResultView()
+    private(set) var isQRCodeMode = false
     private let translationPreferences: TranslationPreferences
     let translationSession: TranslationSession
     private(set) var isTranslationMode = false
@@ -74,6 +76,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     var isPresentingDialog: Bool { dialog != nil }
     var displayMode: LauncherDisplayMode {
         if isPresentingDialog { return .results }
+        if isQRCodeMode { return .qrCode }
         if isTranslationMode { return .results }
         if calculation != nil { return .calculator }
         return isSearchExpanded ? .results : .collapsed
@@ -111,6 +114,8 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         chrome.colorModeButton.action = #selector(toggleColorSwitchingMode)
         chrome.numberBaseModeButton.target = self
         chrome.numberBaseModeButton.action = #selector(toggleNumberBaseSwitchingMode)
+        chrome.qrCodeExitButton.target = self
+        chrome.qrCodeExitButton.action = #selector(exitQRCodeMode)
         chrome.translationExitButton.target = self
         chrome.translationExitButton.action = #selector(exitTranslationMode)
         chrome.translationModeButton.target = self
@@ -162,6 +167,9 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         translationView.translatesAutoresizingMaskIntoConstraints = false
         translationView.isHidden = true
         list.addSubview(translationView)
+        qrCodeView.translatesAutoresizingMaskIntoConstraints = false
+        qrCodeView.isHidden = true
+        list.addSubview(qrCodeView)
         let footer = chrome.footer()
         footer.wantsLayer = true
         footerView = footer
@@ -176,6 +184,10 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
             calculatorView.trailingAnchor.constraint(equalTo: list.trailingAnchor),
             calculatorView.topAnchor.constraint(equalTo: list.topAnchor),
             calculatorView.bottomAnchor.constraint(equalTo: footer.topAnchor),
+            qrCodeView.leadingAnchor.constraint(equalTo: list.leadingAnchor),
+            qrCodeView.trailingAnchor.constraint(equalTo: list.trailingAnchor),
+            qrCodeView.topAnchor.constraint(equalTo: list.topAnchor),
+            qrCodeView.bottomAnchor.constraint(equalTo: footer.topAnchor),
             translationView.leadingAnchor.constraint(equalTo: list.leadingAnchor),
             translationView.trailingAnchor.constraint(equalTo: list.trailingAnchor),
             translationView.topAnchor.constraint(equalTo: list.topAnchor),
@@ -235,6 +247,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         isNumberBaseSwitchingEnabled = true
         isColorSwitchingEnabled = true
         isTranslationMode = false
+        isQRCodeMode = false
         isTranslationLanguageSwitchingEnabled = true
         translationSession.cancel()
         chrome.searchField.stringValue = ""
@@ -246,7 +259,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
 
     private func applyQuery() {
         let query = chrome.searchField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        let isExpanded = isTranslationMode || !query.isEmpty
+        let isExpanded = isTranslationMode || isQRCodeMode || !query.isEmpty
         updateQueryContent(query, isExpanded: isExpanded)
         updateToolViews()
         updateEmptyState(hasQuery: isExpanded)
@@ -265,12 +278,12 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         translationSession.update(query: isTranslationMode ? TranslationQuery(text: chrome.searchField.stringValue) : nil,
                                   language: translationPreferences.targetLanguage,
                                   isComposing: (chrome.searchField.currentEditor() as? NSTextView)?.hasMarkedText() == true)
-        if isTranslationMode {
+        if isTranslationMode || isQRCodeMode {
             calculation = nil
             results = []
             return
         }
-        let items = applications.map(LauncherItem.application) + SystemAction.allCases.map(LauncherItem.action) + [.translation]
+        let items = applications.map(LauncherItem.application) + SystemAction.allCases.map(LauncherItem.action) + [.translation, .qrCode]
         let evaluated = Calculator.evaluate(query, timestampUnit: timestampOutputUnit, colorFormat: colorOutputFormat,
                                             numberBaseFormat: numberBaseOutputFormat)
         if case .numeric(let previous) = calculation, case .numeric(let current) = evaluated,
@@ -284,22 +297,26 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
 
     private func updateToolViews() {
         calculatorView.isHidden = calculation == nil
-        scrollView.isHidden = calculation != nil || isTranslationMode
+        scrollView.isHidden = calculation != nil || isTranslationMode || isQRCodeMode
         translationView.isHidden = !isTranslationMode
+        qrCodeView.isHidden = !isQRCodeMode
+        qrCodeView.configure(text: isQRCodeMode ? chrome.searchField.stringValue : "")
         chrome.setTranslationMode(isTranslationMode)
+        chrome.setQRCodeMode(isQRCodeMode)
         chrome.setTranslationLanguageSwitching(isTranslationMode ? translationPreferences : nil,
                                                isEnabled: isTranslationLanguageSwitchingEnabled)
         if isTranslationMode {
             translationView.configure(translationSession, preferences: translationPreferences, direction: translationSwitchDirection)
         }
         if let calculation { calculatorView.configure(calculation) }
-        chrome.setCalculatorMode(calculation != nil, isColor: colorConversion != nil, isTranslation: isTranslationMode)
+        chrome.setCalculatorMode(calculation != nil, isColor: colorConversion != nil, isTranslation: isTranslationMode, isQRCode: isQRCodeMode)
         chrome.setColorFormatSwitching(colorConversion?.format, isEnabled: isColorSwitchingEnabled)
         chrome.setNumberBaseSwitching(numberBaseConversion?.format, isEnabled: isNumberBaseSwitchingEnabled)
         chrome.updatePrecision(calculation?.decimalPlaceCount, isRounding: isRoundingEnabled)
         chrome.setTimestampUnitSwitching(canSwitchTimestampUnit ? timestampOutputUnit : nil)
-        chrome.setResultBackAvailable(!resultInputs.isEmpty && !isTranslationMode)
+        chrome.setResultBackAvailable(!resultInputs.isEmpty && !isTranslationMode && !isQRCodeMode)
         chrome.openButton.isEnabled = (calculation != nil || !results.isEmpty) && !isOpening
+        if isQRCodeMode { chrome.openButton.isEnabled = qrCodeView.code != nil }
         if isTranslationMode {
             chrome.openButton.isEnabled = translationSession.state.canPerformAction
         }
@@ -356,14 +373,14 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     }
 
     private func updateEmptyState(hasQuery: Bool) {
-        statusLabel.isHidden = isTranslationMode || calculation != nil || !results.isEmpty || !hasQuery
+        statusLabel.isHidden = isTranslationMode || isQRCodeMode || calculation != nil || !results.isEmpty || !hasQuery
         statusLabel.stringValue = isLoading ? "Finding your applications…"
             : "No applications or actions found\nTry a different name."
     }
 
     private func updateSelection() {
         let row = tableView.selectedRow
-        chrome.updateActionTitle(conversionActionTitle(row: row), hint: selectedItem == .translation ? .tab : .returnKey)
+        chrome.updateActionTitle(conversionActionTitle(row: row), hint: selectedToolUsesTab ? .tab : .returnKey)
         let visible = tableView.rows(in: tableView.visibleRect)
         guard visible.location != NSNotFound else { return }
         for index in visible.location..<NSMaxRange(visible) {
@@ -372,7 +389,10 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         }
     }
 
+    private var selectedToolUsesTab: Bool { selectedItem == .translation || selectedItem == .qrCode }
+
     private func conversionActionTitle(row: Int) -> String {
+        if isQRCodeMode { return "Copy QR Code" }
         if isTranslationMode { return translationActionTitle }
         if colorConversion != nil { return "Copy Color" }
         if numberBaseConversion != nil { return "Copy Number" }
@@ -396,6 +416,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
 
     @objc private func openSelectedApplication() {
         guard !isOpening, !isPresentingDialog else { return }
+        if isQRCodeMode { copyQRCode(to: .general); return }
         if isTranslationMode {
             performTranslationAction()
             return
@@ -412,11 +433,18 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     private func activate(_ item: LauncherItem) {
         if case .application(let app) = item {
             openApplication(app)
-        } else if case .action(let action) = item {
-            runAction(action)
-        } else if case .translation = item {
-            enterTranslationMode()
+            return
         }
+        if case .action(let action) = item {
+            runAction(action)
+            return
+        }
+        activateUtility(item)
+    }
+
+    private func activateUtility(_ item: LauncherItem) {
+        if item == .translation { enterTranslationMode() }
+        if item == .qrCode { enterQRCodeMode() }
     }
 
     private var translationActionTitle: String {
@@ -441,6 +469,28 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         guard let answer = translationSession.state.answer else { return }
         pasteboard.clearContents()
         pasteboard.setString(answer, forType: .string)
+        onDismiss?()
+    }
+
+    private func enterQRCodeMode() {
+        resultInputs.removeAll()
+        isQRCodeMode = true
+        chrome.searchField.stringValue = ""
+        applyQuery()
+        view.window?.makeFirstResponder(chrome.searchField)
+    }
+
+    @objc private func exitQRCodeMode() {
+        isQRCodeMode = false
+        chrome.searchField.stringValue = ""
+        applyQuery()
+        view.window?.makeFirstResponder(chrome.searchField)
+    }
+
+    func copyQRCode(to pasteboard: NSPasteboard) {
+        guard isQRCodeMode, let code = qrCodeView.code else { return }
+        pasteboard.clearContents()
+        pasteboard.setData(code.pngData, forType: .png)
         onDismiss?()
     }
 
@@ -561,19 +611,13 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     @objc private func showSettings() { onShowSettings?() }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
-        if isTranslationMode && textView.hasMarkedText() { return false }
+        if (isTranslationMode || isQRCodeMode) && textView.hasMarkedText() { return false }
         animateTabFeedback(for: commandSelector, editor: textView)
         if handleResultBackCommand(commandSelector) { return true }
         if handleResultInsertionCommand(commandSelector, textView: textView) { return true }
-        if handleTranslationCommand(commandSelector) { return true }
+        if handleToolCommand(commandSelector) { return true }
         if handleTranslationNavigationCommand(commandSelector) { return true }
-        if handleNumberBaseModeCommand(commandSelector) { return true }
-        if handleNumberBaseFormatCommand(commandSelector) { return true }
-        if handleColorModeCommand(commandSelector) { return true }
-        if handleColorFormatCommand(commandSelector) { return true }
-        if handleTimestampUnitCommand(commandSelector) { return true }
-        if handleRoundingModeCommand(commandSelector) { return true }
-        if handlePrecisionCommand(commandSelector) { return true }
+        if handleConversionCommand(commandSelector) { return true }
         let actions: [Selector: () -> Void] = [
             #selector(NSResponder.moveDown(_:)): { self.moveSelection(by: 1) },
             #selector(NSResponder.moveUp(_:)): { self.moveSelection(by: -1) },
@@ -585,6 +629,13 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         guard let action = actions[commandSelector] else { return false }
         action()
         return true
+    }
+
+    private func handleConversionCommand(_ selector: Selector) -> Bool {
+        handleNumberBaseModeCommand(selector) || handleNumberBaseFormatCommand(selector)
+            || handleColorModeCommand(selector) || handleColorFormatCommand(selector)
+            || handleTimestampUnitCommand(selector) || handleRoundingModeCommand(selector)
+            || handlePrecisionCommand(selector)
     }
 
     private func animateTabFeedback(for selector: Selector, editor: NSTextView) {
@@ -642,6 +693,20 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         isColorSwitchingEnabled = previous.isColorSwitchingEnabled
         isNumberBaseSwitchingEnabled = previous.isNumberBaseSwitchingEnabled
         editor.insertText(previous.query, replacementRange: NSRange(location: 0, length: editor.string.utf16.count))
+    }
+
+    private func handleToolCommand(_ selector: Selector) -> Bool {
+        if isQRCodeMode {
+            let exits = selector == #selector(NSResponder.cancelOperation(_:))
+                || (selector == #selector(NSResponder.deleteBackward(_:)) && chrome.searchField.stringValue.isEmpty)
+            if exits { exitQRCodeMode(); return true }
+            return selector == #selector(NSResponder.insertTab(_:))
+        }
+        if selectedItem == .qrCode && selector == #selector(NSResponder.insertTab(_:)) {
+            enterQRCodeMode()
+            return true
+        }
+        return handleTranslationCommand(selector)
     }
 
     private func handleTranslationCommand(_ selector: Selector) -> Bool {
@@ -907,6 +972,7 @@ extension ApplicationsViewController: NSTableViewDataSource, NSTableViewDelegate
         if case .action(let action) = item {
             return NSImage(systemSymbolName: action.symbolName, accessibilityDescription: action.name) ?? NSImage()
         }
-        return NSImage(systemSymbolName: "character.bubble", accessibilityDescription: "Translate") ?? NSImage()
+        let symbol = item == .qrCode ? "qrcode" : "character.bubble"
+        return NSImage(systemSymbolName: symbol, accessibilityDescription: item.name) ?? NSImage()
     }
 }
