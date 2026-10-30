@@ -24,7 +24,7 @@ final class ColorSwatchView: NSView {
     }
 }
 
-final class ColorPreviewStripView: NSView {
+class ResultPreviewStripView: NSView {
     private let rightFade = CAGradientLayer()
 
     override init(frame frameRect: NSRect) {
@@ -85,7 +85,7 @@ final class ColorFormatPreviewView: NSStackView {
 
 final class ColorResultView: NSView {
     private let swatch = ColorSwatchView()
-    private let strip = ColorPreviewStripView()
+    private let strip = ResultPreviewStripView()
     private var outputs = (0...ColorConversion.Format.allCases.count).map { _ in ColorFormatPreviewView() }
     private let row = NSStackView()
     private lazy var rowLeading = row.leadingAnchor.constraint(equalTo: strip.leadingAnchor)

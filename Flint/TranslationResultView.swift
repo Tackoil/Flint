@@ -12,16 +12,113 @@ private final class TranslationTextView: NSTextView {
     }
 }
 
+final class TranslationSkeletonView: NSStackView {
+    init(fillColor: NSColor = .quaternaryLabelColor) {
+        super.init(frame: .zero)
+        orientation = .vertical
+        alignment = .leading
+        spacing = 14
+        wantsLayer = true
+        setAccessibilityHidden(true)
+        for width: CGFloat in [0.94, 0.81, 0.58] {
+            let line = AppearanceSurfaceView(fillColor: fillColor)
+            line.layer?.cornerRadius = 6
+            addArrangedSubview(line)
+            line.widthAnchor.constraint(equalTo: widthAnchor, multiplier: width).isActive = true
+            line.heightAnchor.constraint(equalToConstant: 12).isActive = true
+        }
+    }
+
+    required init?(coder: NSCoder) { fatalError("Use init(fillColor:)") }
+
+    override func viewDidHide() {
+        super.viewDidHide()
+        setLoading(false)
+    }
+
+    func setLoading(_ loading: Bool) {
+        guard loading, !isHidden, !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+            layer?.removeAnimation(forKey: "translationSkeletonPulse")
+            return
+        }
+        guard layer?.animation(forKey: "translationSkeletonPulse") == nil else { return }
+        let pulse = CABasicAnimation(keyPath: "opacity")
+        pulse.fromValue = 1
+        pulse.toValue = 0.2
+        pulse.duration = 0.55
+        pulse.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+        pulse.autoreverses = true
+        pulse.repeatCount = .infinity
+        layer?.add(pulse, forKey: "translationSkeletonPulse")
+    }
+}
+
+final class TranslationCandidatePreviewView: ResultPreviewStripView {
+    private let languageLabel = Appearance.label("", size: 13, weight: .medium, color: .labelColor)
+    private let skeleton = TranslationSkeletonView(fillColor: .tertiaryLabelColor)
+    private let output = NSTextField(wrappingLabelWithString: "")
+    private(set) var language: TranslationLanguage?
+    private(set) var response: TranslationResponse?
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        alphaValue = 0.4
+        output.font = .systemFont(ofSize: 21)
+        output.textColor = .labelColor
+        output.maximumNumberOfLines = 6
+        output.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        for child in [languageLabel, skeleton, output] {
+            child.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(child)
+        }
+        NSLayoutConstraint.activate([
+            languageLabel.leadingAnchor.constraint(equalTo: leadingAnchor),
+            languageLabel.trailingAnchor.constraint(equalTo: trailingAnchor),
+            languageLabel.topAnchor.constraint(equalTo: topAnchor),
+            skeleton.leadingAnchor.constraint(equalTo: leadingAnchor),
+            skeleton.trailingAnchor.constraint(equalTo: languageLabel.trailingAnchor),
+            skeleton.topAnchor.constraint(equalTo: languageLabel.bottomAnchor, constant: 22),
+            output.leadingAnchor.constraint(equalTo: skeleton.leadingAnchor),
+            output.trailingAnchor.constraint(equalTo: skeleton.trailingAnchor),
+            output.topAnchor.constraint(equalTo: skeleton.topAnchor),
+            output.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor)
+        ])
+    }
+
+    required init?(coder: NSCoder) { fatalError("Use init(frame:)") }
+
+    func configure(_ language: TranslationLanguage?, response: TranslationResponse?) {
+        self.language = language
+        self.response = response
+        isHidden = language == nil
+        languageLabel.stringValue = language?.rawValue ?? ""
+        skeleton.isHidden = response != nil
+        output.isHidden = response == nil
+        output.stringValue = response?.text ?? ""
+        output.toolTip = response?.text
+        setAccessibilityLabel(language.map { "Next target language: \($0.rawValue)" })
+    }
+}
+
 final class TranslationResultView: NSView {
+    private let primary = NSView()
+    private let nextCandidate = TranslationCandidatePreviewView()
+    private let skeleton = TranslationSkeletonView()
+    private lazy var fullWidth = primary.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -32)
+    private lazy var previewWidth = primary.widthAnchor.constraint(equalTo: widthAnchor, multiplier: 0.66, constant: -42)
     private let heading = Appearance.label("", size: 13, weight: .medium, color: .secondaryLabelColor)
     private let detail = Appearance.label("", size: 16, color: .secondaryLabelColor)
     private let progress = NSProgressIndicator()
     private let output = TranslationTextView()
     private let scroll = NSScrollView()
+    private var previousQuery: TranslationQuery?
+    private var previousLanguage: TranslationLanguage?
     var onExit: (() -> Void)? { didSet { output.onExit = onExit } }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
+        primary.wantsLayer = true
+        primary.layer?.masksToBounds = true
         progress.style = .spinning
         progress.controlSize = .small
         progress.isDisplayedWhenStopped = false
@@ -47,28 +144,66 @@ final class TranslationResultView: NSView {
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
         let header = Appearance.stack([heading, Appearance.spacer(), progress], spacing: 12)
-        [header, detail, scroll].forEach {
+        for child in [primary, nextCandidate] {
+            child.translatesAutoresizingMaskIntoConstraints = false
+            addSubview(child)
+        }
+        [header, detail, scroll, skeleton].forEach {
             $0.translatesAutoresizingMaskIntoConstraints = false
-            addSubview($0)
+            primary.addSubview($0)
         }
         NSLayoutConstraint.activate([
-            header.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 32),
-            header.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -32),
-            header.topAnchor.constraint(equalTo: topAnchor, constant: 26),
+            primary.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 32),
+            primary.topAnchor.constraint(equalTo: topAnchor, constant: 26),
+            primary.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -18),
+            fullWidth,
+            nextCandidate.leadingAnchor.constraint(equalTo: primary.trailingAnchor, constant: 32),
+            nextCandidate.trailingAnchor.constraint(equalTo: trailingAnchor),
+            nextCandidate.topAnchor.constraint(equalTo: primary.topAnchor),
+            nextCandidate.bottomAnchor.constraint(equalTo: primary.bottomAnchor),
+            header.leadingAnchor.constraint(equalTo: primary.leadingAnchor),
+            header.trailingAnchor.constraint(equalTo: primary.trailingAnchor),
+            header.topAnchor.constraint(equalTo: primary.topAnchor),
             detail.leadingAnchor.constraint(equalTo: header.leadingAnchor),
             detail.trailingAnchor.constraint(equalTo: header.trailingAnchor),
             detail.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 22),
             scroll.leadingAnchor.constraint(equalTo: detail.leadingAnchor),
             scroll.trailingAnchor.constraint(equalTo: detail.trailingAnchor),
             scroll.topAnchor.constraint(equalTo: detail.topAnchor),
-            scroll.bottomAnchor.constraint(equalTo: bottomAnchor, constant: -18),
-            detail.bottomAnchor.constraint(lessThanOrEqualTo: bottomAnchor, constant: -18)
+            scroll.bottomAnchor.constraint(equalTo: primary.bottomAnchor),
+            detail.bottomAnchor.constraint(lessThanOrEqualTo: primary.bottomAnchor),
+            skeleton.leadingAnchor.constraint(equalTo: detail.leadingAnchor),
+            skeleton.trailingAnchor.constraint(equalTo: detail.trailingAnchor),
+            skeleton.topAnchor.constraint(equalTo: detail.topAnchor)
         ])
     }
 
     required init?(coder: NSCoder) { fatalError("Use init(frame:)") }
 
-    func configure(_ session: TranslationSession) {
+    func configure(_ session: TranslationSession, preferences: TranslationPreferences, direction: Int = 0) {
+        let inputChanged = previousQuery != session.query
+        let switched = previousLanguage != nil && previousLanguage != session.language && !inputChanged
+        if inputChanged { clearSwitchAnimations() }
+        configureCandidate(session, preferences: preferences)
+        configureResult(session)
+        if switched {
+            let offset = direction == 0 ? inferredDirection(preferences) : direction
+            animateSwitch(direction: offset)
+        }
+        previousQuery = session.query
+        previousLanguage = session.language
+    }
+
+    private func configureCandidate(_ session: TranslationSession, preferences: TranslationPreferences) {
+        let next = preferences.targetLanguages.count > 1 ? preferences.targetLanguage(shiftedBy: 1) : nil
+        nextCandidate.configure(next, response: next.flatMap { session.cachedResponse(for: $0) })
+        if fullWidth.isActive != (next == nil) {
+            NSLayoutConstraint.deactivate([fullWidth, previewWidth])
+            (next == nil ? fullWidth : previewWidth).isActive = true
+        }
+    }
+
+    private func configureResult(_ session: TranslationSession) {
         let source = session.sourceLanguage?.displayName ?? "Auto-detect"
         heading.stringValue = "\(source) → \(session.language.rawValue) · DeepSeek"
         heading.toolTip = sourceLanguageHelp(session.sourceLanguage)
@@ -78,10 +213,13 @@ final class TranslationResultView: NSView {
             output.scrollToBeginningOfDocument(nil)
         }
         scroll.isHidden = session.state.answer == nil
-        detail.isHidden = session.state.answer != nil
+        let showsSkeleton = session.state == .ready || session.state == .waiting || session.state == .loading
+        skeleton.isHidden = !showsSkeleton
+        skeleton.setLoading(session.state == .loading)
+        detail.isHidden = session.state.answer != nil || showsSkeleton
         detail.textColor = .secondaryLabelColor
         progress.stopAnimation(nil)
-        detail.stringValue = "Type or paste text above. Translation starts automatically after a short pause.\nEscape returns to search."
+        detail.stringValue = ""
         if session.state == .waiting { detail.stringValue = "Waiting for you to finish typing…" }
         if session.state == .loading {
             detail.stringValue = "Translating…"
@@ -93,6 +231,38 @@ final class TranslationResultView: NSView {
         if case .failed(let message) = session.state {
             detail.stringValue = message
             detail.textColor = .systemRed
+        }
+    }
+
+    private func inferredDirection(_ preferences: TranslationPreferences) -> Int {
+        preferences.targetLanguage(shiftedBy: -1) == previousLanguage ? 1 : -1
+    }
+
+    private func clearSwitchAnimations() {
+        for card in [primary, nextCandidate] {
+            card.layer?.removeAnimation(forKey: "transition")
+            card.layer?.removeAnimation(forKey: "translationSwitchOpacity")
+        }
+    }
+
+    private func animateSwitch(direction: Int) {
+        let duration = Appearance.launcherTransitionDuration(for: window)
+        guard duration > 0 else { clearSwitchAnimations(); return }
+        for (card, from, to) in [(primary, Float(0.4), Float(1)), (nextCandidate, Float(1), Float(0.4))] {
+            let opacity = card.layer?.animation(forKey: "translationSwitchOpacity") == nil
+                ? from : (card.layer?.presentation()?.opacity ?? from)
+            let slide = CATransition()
+            slide.type = .push
+            slide.subtype = direction > 0 ? .fromRight : .fromLeft
+            slide.duration = duration
+            slide.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            card.layer?.add(slide, forKey: "transition")
+            let fade = CABasicAnimation(keyPath: "opacity")
+            fade.fromValue = opacity
+            fade.toValue = to
+            fade.duration = duration
+            fade.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            card.layer?.add(fade, forKey: "translationSwitchOpacity")
         }
     }
 

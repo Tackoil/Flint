@@ -213,6 +213,11 @@ private final class LauncherModeButton: NSButton {
                label: isSwitchingNumberBases ? "Edit number" : "Switch base")
     }
 
+    func update(isSwitchingLanguages: Bool) {
+        update(hint: isSwitchingLanguages ? .upArrow : .downArrow,
+               label: isSwitchingLanguages ? "Edit text" : "Switch language")
+    }
+
     private func update(hint: KeyboardHint, label: String) {
         if content.hint != hint { content.hint = hint }
         if content.label != label { content.label = label }
@@ -236,6 +241,7 @@ final class LauncherHeaderFooter {
     let colorModeButton: NSButton = LauncherModeButton()
     let numberBaseModeButton: NSButton = LauncherModeButton()
     let translationExitButton: NSButton = LauncherOpenButton()
+    let translationModeButton: NSButton = LauncherModeButton()
     private let searchIcon = LauncherSearchIcon()
     private let navigation = Appearance.stack([
         Appearance.label("Navigate", size: 12, color: .labelColor), KeyboardHintView(.upArrow), KeyboardHintView(.downArrow)
@@ -250,6 +256,11 @@ final class LauncherHeaderFooter {
     private let nextNumberBase = KeyboardHintView(.rightArrow)
     private lazy var numberBaseControls = Appearance.stack([previousNumberBase, nextNumberBase], spacing: 12)
     private let timestampUnitHint = KeyboardHintView(.rightArrow, label: "ms")
+    private let translationLanguageLabel = Appearance.label("", size: 12, color: .labelColor)
+    private let previousTranslationLanguage = KeyboardHintView(.leftArrow)
+    private let nextTranslationLanguage = KeyboardHintView(.rightArrow)
+    private lazy var translationLanguageControls = Appearance.stack(
+        [translationLanguageLabel, previousTranslationLanguage, nextTranslationLanguage], spacing: 4)
     private var footerContent: NSView?
     private var actionGroup: ActionGroupView?
 
@@ -308,6 +319,8 @@ final class LauncherHeaderFooter {
         numberBaseControls.isHidden = true
         numberBaseModeButton.isHidden = true
         translationExitButton.isHidden = true
+        translationModeButton.isHidden = true
+        translationLanguageControls.isHidden = true
         useResultButton.isHidden = true
         resultBackButton.isHidden = true
         (resultBackButton as? LauncherOpenButton)?.updateTitle("Back", hint: .escape)
@@ -317,7 +330,8 @@ final class LauncherHeaderFooter {
         translationExitButton.toolTip = "Return to search (Escape)"
         let actions = Appearance.actionGroup(content: Appearance.stack(
             [openButton, useResultButton, resultBackButton, translationExitButton, navigation, precisionControls, roundingModeButton, timestampUnitHint,
-             colorFormatControls, colorModeButton, numberBaseControls, numberBaseModeButton], spacing: 16))
+             colorFormatControls, colorModeButton, numberBaseControls, numberBaseModeButton,
+             translationLanguageControls, translationModeButton], spacing: 16))
         actions.wantsLayer = true
         actionGroup = actions as? ActionGroupView
         settingsButton.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: "Settings")?
@@ -399,7 +413,9 @@ final class LauncherHeaderFooter {
             (roundingModeButton as? LauncherModeButton)?.content,
             (colorModeButton as? LauncherModeButton)?.content,
             (numberBaseModeButton as? LauncherModeButton)?.content,
-            previousColorFormat, nextColorFormat, previousNumberBase, nextNumberBase, timestampUnitHint
+            (translationModeButton as? LauncherModeButton)?.content,
+            previousColorFormat, nextColorFormat, previousNumberBase, nextNumberBase, timestampUnitHint,
+            previousTranslationLanguage, nextTranslationLanguage
         ].compactMap { $0 }
         guard let hint = hints.first(where: { $0.hint == key && !$0.isHiddenOrHasHiddenAncestor }) else {
             action()
@@ -460,6 +476,24 @@ final class LauncherHeaderFooter {
             let help = "Left switches to \(previous); Right switches to \(next). Up edits the number."
             numberBaseControls.setAccessibilityLabel(help)
             numberBaseControls.toolTip = help
+        }
+    }
+
+    func setTranslationLanguageSwitching(_ preferences: TranslationPreferences?, isEnabled: Bool) {
+        animateActionLayout {
+            translationModeButton.isHidden = preferences == nil
+            (translationModeButton as? LauncherModeButton)?.update(isSwitchingLanguages: isEnabled)
+            translationLanguageControls.isHidden = preferences == nil || !isEnabled
+            guard let preferences else { return }
+            translationLanguageLabel.stringValue = preferences.targetLanguage.rawValue
+            let hasAlternatives = preferences.targetLanguages.count > 1
+            previousTranslationLanguage.isHidden = !hasAlternatives
+            nextTranslationLanguage.isHidden = !hasAlternatives
+            let previous = preferences.targetLanguage(shiftedBy: -1).rawValue
+            let next = preferences.targetLanguage(shiftedBy: 1).rawValue
+            let help = "Left switches to \(previous); Right switches to \(next). Up edits the text."
+            translationLanguageControls.setAccessibilityLabel(help)
+            translationLanguageControls.toolTip = help
         }
     }
 

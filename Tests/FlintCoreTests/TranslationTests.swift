@@ -27,6 +27,80 @@ struct TranslationTests {
         #expect(preferences.targetLanguage == .simplifiedChinese)
     }
 
+    @Test func savedLanguageListMigratesAndPersists() throws {
+        let suite = "FlintTranslationTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set("Japanese", forKey: "translation.targetLanguage")
+        let preferences = TranslationPreferences(defaults: defaults)
+        #expect(preferences.targetLanguages == [.japanese])
+        preferences.targetLanguages.append(.english)
+        preferences.targetLanguages.append(.english)
+        #expect(TranslationPreferences(defaults: defaults).targetLanguages == [.japanese, .english])
+        #expect(preferences.targetLanguage == .japanese)
+        preferences.targetLanguages = [.english]
+        #expect(preferences.targetLanguage == .english)
+        preferences.targetLanguages = []
+        #expect(preferences.targetLanguages == [.english])
+        preferences.targetLanguage = .french
+        #expect(preferences.targetLanguages == [.english, .french])
+    }
+
+    @Test func savedLanguageListFiltersInvalidEntries() throws {
+        let suite = "FlintTranslationTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = TranslationPreferences(defaults: defaults)
+        defaults.set(["invalid", "Japanese", "Japanese", "English"], forKey: "translation.targetLanguages")
+        #expect(preferences.targetLanguages == [.japanese, .english])
+        defaults.set(["invalid"], forKey: "translation.targetLanguages")
+        #expect(preferences.targetLanguages == [.simplifiedChinese])
+    }
+
+    @Test func targetLanguageSwitchingWrapsThroughSavedLanguages() throws {
+        let suite = "FlintTranslationTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = TranslationPreferences(defaults: defaults)
+        preferences.targetLanguages = [.english, .japanese, .french]
+        #expect(preferences.targetLanguage(shiftedBy: -1) == .french)
+        #expect(preferences.targetLanguage(shiftedBy: 1) == .japanese)
+        #expect(preferences.targetLanguage(shiftedBy: 3) == .english)
+        preferences.targetLanguage = .french
+        #expect(preferences.targetLanguage(shiftedBy: 1) == .english)
+        #expect(preferences.targetLanguage(shiftedBy: -1) == .japanese)
+        preferences.targetLanguages = [.french]
+        #expect(preferences.targetLanguage(shiftedBy: -1) == .french)
+        #expect(preferences.targetLanguage(shiftedBy: 1) == .french)
+    }
+
+    @Test func unlockedAPIKeyIsReusedUntilReplacedOrRemoved() throws {
+        let cache = TranslationAPIKeyCache()
+        var reads = 0
+        let load = { reads += 1; return "original-key" }
+        #expect(try cache.read(load: load) == "original-key")
+        #expect(try cache.read(load: load) == "original-key")
+        #expect(reads == 1)
+        try cache.replace(with: "replacement-key", after: {})
+        #expect(try cache.read(load: load) == "replacement-key")
+        #expect(reads == 1)
+        try cache.replace(with: nil, after: {})
+        #expect(try cache.read { reads += 1; return nil } == nil)
+        #expect(reads == 2)
+    }
+
+    @Test func failedKeychainOperationsDoNotCorruptTheCache() throws {
+        let cache = TranslationAPIKeyCache()
+        #expect(throws: CocoaError.self) {
+            try cache.read { throw CocoaError(.fileReadNoPermission) }
+        }
+        #expect(try cache.read { "unlocked-key" } == "unlocked-key")
+        #expect(throws: CocoaError.self) {
+            try cache.replace(with: nil) { throw CocoaError(.fileWriteNoPermission) }
+        }
+        #expect(try cache.read { "unexpected-read" } == "unlocked-key")
+    }
+
     @Test func sendsTranslationToDeepSeekWithExplicitTarget() async throws {
         let requests = TranslationRequestCounter()
         let client = DeepSeekTranslationClient { request in
@@ -300,6 +374,7 @@ struct TranslationSessionTests {
         for _ in 0..<20 { await Task.yield() }
         #expect(session.state.answer == "fresh")
         #expect(session.sourceLanguage?.code == "fr")
+        #expect(session.cachedResponse(for: .english)?.text == "fresh")
         session.onChange = nil
         session.cancel()
         #expect(session.state == .ready)
@@ -321,6 +396,64 @@ struct TranslationSessionTests {
         session.update(query: .init(text: "你好"), language: .japanese)
         #expect(session.state == .waiting)
         #expect(session.language == .japanese)
+        session.cancel()
+    }
+
+    @Test func unchangedParagraphRestoresEachTargetWithoutAnotherRequest() async {
+        let client = DeferredTranslationClient()
+        let session = TranslationSession(client: client, readAPIKey: { "test" })
+        let query = TranslationQuery(text: "Bonjour")
+        let source = InferredSourceLanguage(code: "fr", origin: .deepSeek)
+        session.update(query: query, language: .english)
+        session.submit()
+        #expect(await client.nextRequest() == query.text)
+        await receiveAnswer(session, client: client, text: query.text, answer: "Hello", sourceLanguage: source)
+        session.update(query: query, language: .japanese)
+        #expect(session.state == .waiting)
+        session.submit()
+        #expect(await client.nextRequest() == query.text)
+        await receiveAnswer(session, client: client, text: query.text, answer: "こんにちは", sourceLanguage: source)
+        session.update(query: query, language: .english)
+        #expect(session.state == .translated("Hello") && session.sourceLanguage == source)
+        session.submit()
+        session.update(query: query, language: .japanese)
+        #expect(session.state == .translated("こんにちは") && session.sourceLanguage == source)
+        #expect(await client.requests.count == 2)
+        #expect(session.cachedResponse(for: .english)?.text == "Hello")
+        session.cancel()
+        #expect(session.cachedResponse(for: .english) == nil && session.cachedResponse(for: .japanese) == nil)
+    }
+
+    @Test(arguments: ["Hello!", "Hello ", "Hello\n", ""])
+    func changingInputClearsAllCachedTargets(_ text: String) async {
+        let client = DeferredTranslationClient()
+        let session = TranslationSession(client: client, readAPIKey: { "test" })
+        session.update(query: .init(text: "Hello"), language: .japanese)
+        session.submit()
+        #expect(await client.nextRequest() == "Hello")
+        await receiveAnswer(session, client: client, text: "Hello")
+        session.update(query: .init(text: text), language: .japanese)
+        #expect(session.cachedResponse(for: .japanese) == nil && session.state.answer == nil)
+        session.update(query: .init(text: "Hello"), language: .japanese)
+        #expect(session.state == .waiting, "Earlier paragraphs must not remain in the cache")
+        session.cancel()
+    }
+
+    @Test func failedResultsCanBeRetriedAndAreNotCached() async {
+        let client = DeferredTranslationClient()
+        var firstRead = true
+        let session = TranslationSession(client: client, readAPIKey: {
+            if firstRead { firstRead = false; throw TranslationError.network }
+            return "test"
+        })
+        session.update(query: .init(text: "Hello"), language: .japanese)
+        session.submit()
+        #expect(session.state == .failed(TranslationError.network.localizedDescription))
+        #expect(session.cachedResponse(for: .japanese) == nil)
+        session.submit()
+        #expect(await client.nextRequest() == "Hello")
+        await receiveAnswer(session, client: client, text: "Hello")
+        #expect(session.cachedResponse(for: .japanese)?.text == "translated")
         session.cancel()
     }
 
@@ -436,12 +569,13 @@ struct TranslationSessionTests {
         #expect(session.sourceLanguage == nil)
     }
 
-    private func receiveAnswer(_ session: TranslationSession, client: DeferredTranslationClient, text: String) async {
+    private func receiveAnswer(_ session: TranslationSession, client: DeferredTranslationClient, text: String,
+                               answer: String = "translated", sourceLanguage: InferredSourceLanguage? = nil) async {
         await withCheckedContinuation { done in
             session.onChange = {
                 if session.state.answer != nil { done.resume() }
             }
-            Task { await client.complete(text, answer: "translated") }
+            Task { await client.complete(text, answer: answer, sourceLanguage: sourceLanguage) }
         }
         session.onChange = nil
     }

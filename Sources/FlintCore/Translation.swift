@@ -73,7 +73,38 @@ final class TranslationPreferences {
             defaults.string(forKey: "translation.targetLanguage").flatMap(TranslationLanguage.init(rawValue:))
                 ?? .simplifiedChinese
         }
-        set { defaults.set(newValue.rawValue, forKey: "translation.targetLanguage") }
+        set {
+            defaults.set(newValue.rawValue, forKey: "translation.targetLanguage")
+            guard defaults.array(forKey: "translation.targetLanguages") != nil else { return }
+            if !targetLanguages.contains(newValue) { targetLanguages.append(newValue) }
+        }
+    }
+
+    var targetLanguages: [TranslationLanguage] {
+        get {
+            let stored = defaults.stringArray(forKey: "translation.targetLanguages") ?? []
+            let languages = uniqueLanguages(stored.compactMap(TranslationLanguage.init(rawValue:)))
+            return languages.isEmpty ? [targetLanguage] : languages
+        }
+        set {
+            let languages = uniqueLanguages(newValue)
+            guard let first = languages.first else { return }
+            defaults.set(languages.map(\.rawValue), forKey: "translation.targetLanguages")
+            if !languages.contains(targetLanguage) { targetLanguage = first }
+        }
+    }
+
+    private func uniqueLanguages(_ languages: [TranslationLanguage]) -> [TranslationLanguage] {
+        var result: [TranslationLanguage] = []
+        for language in languages where !result.contains(language) { result.append(language) }
+        return result
+    }
+
+    func targetLanguage(shiftedBy offset: Int) -> TranslationLanguage {
+        let languages = targetLanguages
+        let current = languages.firstIndex(of: targetLanguage) ?? 0
+        let index = (current + offset % languages.count + languages.count) % languages.count
+        return languages[index]
     }
 }
 

@@ -53,7 +53,7 @@ private func checkColorStripLayout(_ colorView: ColorResultView) {
     colorView.window?.contentView?.layoutSubtreeIfNeeded()
     let views = colorDescendants(colorView)
     let swatch = views.compactMap { $0 as? ColorSwatchView }.first!
-    let strip = views.compactMap { $0 as? ColorPreviewStripView }.first!
+    let strip = views.compactMap { $0 as? ResultPreviewStripView }.first!
     let outputs = views.compactMap { $0 as? ColorFormatPreviewView }
         .filter { !$0.isAccessibilityHidden() }.sorted { $0.frame.minX < $1.frame.minX }
     precondition(outputs.map(\.format) == [.rgb, .hsl, .hwb, .lab, .lch, .oklab, .oklch, .hex])
@@ -161,7 +161,7 @@ private func checkColorOutputAnimation(_ controller: ApplicationsViewController,
     RunLoop.current.run(until: Date().addingTimeInterval(0.05))
     let views = colorDescendants(controller.view)
     let color = views.compactMap { $0 as? ColorResultView }.first!
-    let strip = views.compactMap { $0 as? ColorPreviewStripView }.first!
+    let strip = views.compactMap { $0 as? ResultPreviewStripView }.first!
     let swatch = views.compactMap { $0 as? ColorSwatchView }.first!
     let swatchFrame = swatch.frame
     let oldPrimary = views.compactMap { $0 as? ColorFormatPreviewView }.first { $0.isPrimary }!

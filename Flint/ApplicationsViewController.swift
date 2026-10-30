@@ -48,9 +48,11 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     private let scrollView = LauncherResultsScrollView()
     private let calculatorView = CalculatorResultView()
     private let translationView = TranslationResultView()
-    private let translationPreferences = TranslationPreferences()
+    private let translationPreferences: TranslationPreferences
     let translationSession: TranslationSession
     private(set) var isTranslationMode = false
+    private var isTranslationLanguageSwitchingEnabled = true
+    private var translationSwitchDirection = 0
     private var calculation: CalculatorResult?
     private var resultInputs: [ResultInput] = []
     private var colorOutputFormat: ColorConversion.Format?
@@ -77,8 +79,10 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         return isSearchExpanded ? .results : .collapsed
     }
 
-    init(translationSession: TranslationSession? = nil) {
+    init(translationSession: TranslationSession? = nil,
+         translationPreferences: TranslationPreferences = TranslationPreferences()) {
         self.translationSession = translationSession ?? TranslationSession()
+        self.translationPreferences = translationPreferences
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -109,6 +113,8 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         chrome.numberBaseModeButton.action = #selector(toggleNumberBaseSwitchingMode)
         chrome.translationExitButton.target = self
         chrome.translationExitButton.action = #selector(exitTranslationMode)
+        chrome.translationModeButton.target = self
+        chrome.translationModeButton.action = #selector(toggleTranslationLanguageSwitchingMode)
         translationView.onExit = { [weak self] in self?.exitTranslationMode() }
         translationSession.onChange = { [weak self] in self?.applyQuery() }
         refreshApplications()
@@ -229,6 +235,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         isNumberBaseSwitchingEnabled = true
         isColorSwitchingEnabled = true
         isTranslationMode = false
+        isTranslationLanguageSwitchingEnabled = true
         translationSession.cancel()
         chrome.searchField.stringValue = ""
         applyQuery()
@@ -280,7 +287,11 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         scrollView.isHidden = calculation != nil || isTranslationMode
         translationView.isHidden = !isTranslationMode
         chrome.setTranslationMode(isTranslationMode)
-        if isTranslationMode { translationView.configure(translationSession) }
+        chrome.setTranslationLanguageSwitching(isTranslationMode ? translationPreferences : nil,
+                                               isEnabled: isTranslationLanguageSwitchingEnabled)
+        if isTranslationMode {
+            translationView.configure(translationSession, preferences: translationPreferences, direction: translationSwitchDirection)
+        }
         if let calculation { calculatorView.configure(calculation) }
         chrome.setCalculatorMode(calculation != nil, isColor: colorConversion != nil, isTranslation: isTranslationMode)
         chrome.setColorFormatSwitching(colorConversion?.format, isEnabled: isColorSwitchingEnabled)
@@ -436,6 +447,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     private func enterTranslationMode() {
         resultInputs.removeAll()
         isTranslationMode = true
+        isTranslationLanguageSwitchingEnabled = true
         chrome.searchField.stringValue = ""
         applyQuery()
         view.window?.makeFirstResponder(chrome.searchField)
@@ -549,10 +561,12 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     @objc private func showSettings() { onShowSettings?() }
 
     func control(_ control: NSControl, textView: NSTextView, doCommandBy commandSelector: Selector) -> Bool {
+        if isTranslationMode && textView.hasMarkedText() { return false }
         animateTabFeedback(for: commandSelector, editor: textView)
         if handleResultBackCommand(commandSelector) { return true }
         if handleResultInsertionCommand(commandSelector, textView: textView) { return true }
         if handleTranslationCommand(commandSelector) { return true }
+        if handleTranslationNavigationCommand(commandSelector) { return true }
         if handleNumberBaseModeCommand(commandSelector) { return true }
         if handleNumberBaseFormatCommand(commandSelector) { return true }
         if handleColorModeCommand(commandSelector) { return true }
@@ -647,6 +661,51 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     private var selectedItem: LauncherItem? {
         let row = tableView.selectedRow
         return results.indices.contains(row) ? results[row] : nil
+    }
+
+    private func handleTranslationNavigationCommand(_ selector: Selector) -> Bool {
+        guard isTranslationMode, !isPresentingDialog, !isOpening,
+              NSApp.currentEvent?.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty != false else {
+            return false
+        }
+        let modes: [Selector: Bool] = [
+            #selector(NSResponder.moveUp(_:)): false, #selector(NSResponder.moveDown(_:)): true
+        ]
+        if let enabled = modes[selector] {
+            chrome.performAfterKeyRelease(enabled ? .downArrow : .upArrow) { [weak self] in
+                guard self?.isTranslationMode == true else { return }
+                self?.setTranslationLanguageSwitchingEnabled(enabled)
+            }
+            return true
+        }
+        return handleTranslationLanguageCommand(selector)
+    }
+
+    private func handleTranslationLanguageCommand(_ selector: Selector) -> Bool {
+        let offsets: [Selector: Int] = [
+            #selector(NSResponder.moveLeft(_:)): -1, #selector(NSResponder.moveBackward(_:)): -1,
+            #selector(NSResponder.moveRight(_:)): 1, #selector(NSResponder.moveForward(_:)): 1
+        ]
+        guard let offset = offsets[selector], isTranslationLanguageSwitchingEnabled else { return false }
+        chrome.performAfterKeyRelease(offset < 0 ? .leftArrow : .rightArrow) { [weak self] in
+            guard let self, self.isTranslationMode, self.isTranslationLanguageSwitchingEnabled else { return }
+            self.translationSwitchDirection = offset
+            defer { self.translationSwitchDirection = 0 }
+            self.translationPreferences.targetLanguage = self.translationPreferences.targetLanguage(shiftedBy: offset)
+            self.applyQuery()
+        }
+        return true
+    }
+
+    @objc private func toggleTranslationLanguageSwitchingMode() {
+        guard isTranslationMode, !isPresentingDialog, !isOpening else { return }
+        setTranslationLanguageSwitchingEnabled(!isTranslationLanguageSwitchingEnabled)
+    }
+
+    private func setTranslationLanguageSwitchingEnabled(_ enabled: Bool) {
+        isTranslationLanguageSwitchingEnabled = enabled
+        chrome.setTranslationLanguageSwitching(translationPreferences, isEnabled: enabled)
+        if chrome.searchField.currentEditor() == nil { view.window?.makeFirstResponder(chrome.searchField) }
     }
 
     private func handleNumberBaseModeCommand(_ selector: Selector) -> Bool {

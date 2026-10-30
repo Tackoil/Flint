@@ -23,6 +23,7 @@ final class TranslationSession {
     private var isComposing = false
     private var task: Task<Void, Never>?
     private var generation = 0
+    private var responses: [TranslationLanguage: TranslationResponse] = [:]
     private(set) var query: TranslationQuery?
     private(set) var language: TranslationLanguage = .simplifiedChinese
     private(set) var sourceLanguage: InferredSourceLanguage?
@@ -43,11 +44,25 @@ final class TranslationSession {
 
     func update(query: TranslationQuery?, language: TranslationLanguage, isComposing: Bool = false) {
         guard self.query != query || self.language != language || self.isComposing != isComposing else { return }
-        cancel()
+        stopPendingTranslation()
+        if self.query != query { responses.removeAll() }
         self.query = query
         self.language = language
         self.isComposing = isComposing
+        if restoreCachedResponse() { return }
         scheduleTranslation()
+    }
+
+    func cachedResponse(for language: TranslationLanguage) -> TranslationResponse? {
+        guard !isComposing else { return nil }
+        return responses[language]
+    }
+
+    private func restoreCachedResponse() -> Bool {
+        guard let response = cachedResponse(for: language) else { return false }
+        sourceLanguage = response.sourceLanguage
+        state = .translated(response.text)
+        return true
     }
 
     private func scheduleTranslation() {
@@ -69,6 +84,11 @@ final class TranslationSession {
     }
 
     func cancel() {
+        stopPendingTranslation()
+        responses.removeAll()
+    }
+
+    private func stopPendingTranslation() {
         generation += 1
         task?.cancel()
         task = nil
@@ -85,6 +105,7 @@ final class TranslationSession {
             setState(.failed(TranslationError.tooLong.localizedDescription))
             return
         }
+        if restoreCachedResponse() { onChange?(); return }
         sourceLanguage = inferSourceLanguage(query.text)
         do {
             guard let key = try readAPIKey(), !key.isEmpty else {
@@ -108,6 +129,7 @@ final class TranslationSession {
                 let response = try await client.translate(text, to: language, apiKey: key)
                 guard !Task.isCancelled, let self, self.generation == current else { return }
                 self.sourceLanguage = response.sourceLanguage ?? self.sourceLanguage
+                self.responses[language] = TranslationResponse(text: response.text, sourceLanguage: self.sourceLanguage)
                 self.setState(.translated(response.text))
             } catch {
                 guard !Task.isCancelled, let self, self.generation == current else { return }
