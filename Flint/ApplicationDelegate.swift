@@ -22,6 +22,10 @@ final class ApplicationDelegate: NSObject, NSApplicationDelegate, UNUserNotifica
             self?.showSettings()
             self?.settingsController?.showTranslationSettings()
         }
+        launcher?.onCreateQuickLink = { [weak self] in
+            self?.showSettings()
+            self?.settingsController?.createQuickLink()
+        }
         if !wasLaunchedAtLogin { showLauncher() }
     }
 

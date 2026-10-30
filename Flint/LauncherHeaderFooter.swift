@@ -235,9 +235,35 @@ private final class LauncherModeButton: NSButton {
     }
 }
 
+final class QueryTransitionAnimation: NSAnimation {
+    private let update: (CGFloat) -> Void
+
+    init(duration: TimeInterval, update: @escaping (CGFloat) -> Void) {
+        self.update = update
+        super.init(duration: duration, animationCurve: .easeInOut)
+        animationBlockingMode = .nonblocking
+        frameRate = 120
+    }
+
+    required init?(coder: NSCoder) { fatalError("Use init(duration:update:)") }
+
+    override var currentProgress: NSAnimation.Progress {
+        didSet { update(CGFloat(currentValue)) }
+    }
+}
+
+@MainActor
 final class LauncherHeaderFooter {
     static let searchBarHeight: CGFloat = LauncherLayout.cornerRadius * 2
     let searchField: NSTextField = LauncherSearchField()
+    let quickLinkBackButton: NSButton = LauncherOpenButton()
+    let quickLinkQueries = QuickLinkQueryBar(frame: .zero)
+    private lazy var querySearchWidth = searchField.widthAnchor.constraint(equalToConstant: 1)
+    private var queryWidthAnimation: QueryTransitionAnimation?
+    private var queryTargetWidth: CGFloat = 1
+    private lazy var searchInputs = Appearance.stack([searchField, quickLinkQueries])
+    private let queryNavigation = KeyboardHintView(.tab, label: "Edit queries")
+    private var isToolMode = false
     let openButton: NSButton = LauncherOpenButton()
     let useResultButton: NSButton = LauncherOpenButton()
     let resultBackButton: NSButton = LauncherOpenButton()
@@ -284,14 +310,14 @@ final class LauncherHeaderFooter {
         searchField.cell?.isScrollable = false
         searchField.lineBreakMode = .byTruncatingTail
         searchField.placeholderAttributedString = NSAttributedString(
-            string: "Search apps, actions, calculate, or translate…",
+            string: "Search apps, links, actions, calculate, or translate…",
             attributes: [.font: searchFont, .foregroundColor: NSColor.secondaryLabelColor]
         )
         searchField.textColor = .labelColor
         searchField.isBordered = false
         searchField.drawsBackground = false
         searchField.focusRingType = .none
-        searchField.setAccessibilityLabel("Search applications, actions, calculate, or translate")
+        searchField.setAccessibilityLabel("Search applications, quick links, actions, calculate, or translate")
         searchField.setContentHuggingPriority(.defaultLow, for: .horizontal)
         searchField.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         return searchBarLayout(icon: searchIcon)
@@ -299,7 +325,9 @@ final class LauncherHeaderFooter {
 
     private func searchBarLayout(icon: NSView) -> NSView {
         let bar = NSView()
-        for item in [icon, searchField] {
+        let inputs = searchInputs
+        inputs.spacing = (" " as NSString).size(withAttributes: [.font: searchField.font!]).width
+        for item in [icon, inputs] {
             item.translatesAutoresizingMaskIntoConstraints = false
             bar.addSubview(item)
         }
@@ -307,15 +335,20 @@ final class LauncherHeaderFooter {
             bar.heightAnchor.constraint(equalToConstant: Self.searchBarHeight),
             icon.centerXAnchor.constraint(equalTo: bar.leadingAnchor, constant: LauncherLayout.iconCenterX),
             icon.centerYAnchor.constraint(equalTo: bar.centerYAnchor),
-            searchField.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: LauncherLayout.textLeading),
-            searchField.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -LauncherLayout.contentInset),
+            inputs.leadingAnchor.constraint(equalTo: bar.leadingAnchor, constant: LauncherLayout.textLeading),
+            inputs.trailingAnchor.constraint(equalTo: bar.trailingAnchor, constant: -LauncherLayout.contentInset),
             searchField.heightAnchor.constraint(lessThanOrEqualToConstant: 22),
-            searchField.centerYAnchor.constraint(equalTo: bar.centerYAnchor, constant: 0.5)
+            quickLinkQueries.widthAnchor.constraint(greaterThanOrEqualToConstant: 140),
+            inputs.centerYAnchor.constraint(equalTo: bar.centerYAnchor, constant: 0.5)
         ])
         return bar
     }
 
     func footer() -> NSView {
+        queryNavigation.isHidden = true
+        quickLinkBackButton.isHidden = true
+        (quickLinkBackButton as? LauncherOpenButton)?.updateTitle("Search", hint: .escape)
+        quickLinkBackButton.setAccessibilityLabel("Return to search")
         navigation.setAccessibilityLabel("Use the Up and Down arrow keys to navigate")
         precisionControls.isHidden = true
         roundingModeButton.isHidden = true
@@ -338,7 +371,7 @@ final class LauncherHeaderFooter {
         translationExitButton.setAccessibilityLabel("Exit translation mode")
         translationExitButton.toolTip = "Return to search (Escape)"
         let actions = Appearance.actionGroup(content: Appearance.stack(
-            [openButton, useResultButton, resultBackButton, translationExitButton, qrCodeExitButton, navigation, precisionControls, roundingModeButton, timestampUnitHint,
+            [openButton, useResultButton, resultBackButton, translationExitButton, qrCodeExitButton, queryNavigation, quickLinkBackButton, navigation, precisionControls, roundingModeButton, timestampUnitHint,
              colorFormatControls, colorModeButton, numberBaseControls, numberBaseModeButton,
              translationLanguageControls, translationModeButton], spacing: 16))
         actions.wantsLayer = true
@@ -371,25 +404,75 @@ final class LauncherHeaderFooter {
     }
 
     func setCalculatorMode(_ isCalculator: Bool, isColor: Bool = false, isTranslation: Bool = false, isQRCode: Bool = false) {
+        isToolMode = isCalculator || isTranslation || isQRCode
         animateActionLayout {
-            navigation.isHidden = isCalculator || isTranslation || isQRCode
+            navigation.isHidden = isToolMode || !quickLinkQueries.isHidden
             useResultButton.isHidden = !isCalculator
         }
         searchIcon.setCalculatorMode(isCalculator, isColor: isColor, isTranslation: isTranslation, isQRCode: isQRCode)
     }
 
+    func setQuickLinkQueries(_ link: QuickLink?) {
+        quickLinkQueries.configure(link: link)
+        let textWidth = (searchField.stringValue as NSString).size(withAttributes: [.font: searchField.font!]).width
+        if quickLinkQueries.isHidden {
+            queryWidthAnimation?.stop()
+            queryWidthAnimation = nil
+        }
+        updateQueryWidth(min(ceil(textWidth), 480))
+        querySearchWidth.isActive = !quickLinkQueries.isHidden
+        animateActionLayout {
+            queryNavigation.isHidden = quickLinkQueries.isHidden
+            quickLinkBackButton.isHidden = !quickLinkQueries.isEditing
+            (quickLinkBackButton as? LauncherOpenButton)?.updateTitle(quickLinkQueries.escapeTitle, hint: .escape)
+            queryNavigation.label = quickLinkQueries.isEditing ? "Next query" : "Edit queries"
+            navigation.isHidden = isToolMode || !quickLinkQueries.isHidden
+        }
+    }
+
+    private func updateQueryWidth(_ width: CGFloat) {
+        guard queryWidthAnimation == nil || queryTargetWidth != width else { return }
+        queryWidthAnimation?.stop()
+        queryWidthAnimation = nil
+        queryTargetWidth = width
+        querySearchWidth.constant = width
+    }
+
+    func animateQueryCompletion(_ updates: () -> Void) {
+        let initialWidth = querySearchWidth.constant
+        let wasVisible = !quickLinkQueries.isHidden
+        updates()
+        let target = queryTargetWidth
+        queryWidthAnimation?.stop()
+        queryWidthAnimation = nil
+        querySearchWidth.constant = target
+        searchInputs.layoutSubtreeIfNeeded()
+        let duration = Appearance.launcherTransitionDuration(for: quickLinkQueries.window)
+        guard wasVisible, !quickLinkQueries.isHidden, duration > 0, abs(target - initialWidth) > 0.5 else { return }
+        querySearchWidth.constant = initialWidth
+        searchInputs.layoutSubtreeIfNeeded()
+        // Animate the native layout so the fields, focus outline, and field editor move together.
+        let animation = QueryTransitionAnimation(duration: duration) { [weak self] progress in
+            guard let self else { return }
+            self.querySearchWidth.constant = initialWidth + (target - initialWidth) * progress
+            self.searchInputs.layoutSubtreeIfNeeded()
+        }
+        queryWidthAnimation = animation
+        animation.start()
+    }
+
     func setTranslationMode(_ enabled: Bool) {
         guard translationExitButton.isHidden == enabled else { return }
         animateActionLayout { translationExitButton.isHidden = !enabled }
-        searchField.setAccessibilityLabel(enabled ? "Text to translate" : "Search applications, actions, calculate, or translate")
-        searchField.placeholderString = enabled ? "Text to translate…" : "Search apps, actions, calculate, or translate…"
+        searchField.setAccessibilityLabel(enabled ? "Text to translate" : "Search applications, quick links, actions, calculate, or translate")
+        searchField.placeholderString = enabled ? "Text to translate…" : "Search apps, links, actions, calculate, or translate…"
     }
 
     func setQRCodeMode(_ enabled: Bool) {
         guard qrCodeExitButton.isHidden == enabled else { return }
         animateActionLayout { qrCodeExitButton.isHidden = !enabled }
-        searchField.setAccessibilityLabel(enabled ? "Text or URL for QR code" : "Search applications, actions, calculate, or translate")
-        searchField.placeholderString = enabled ? "Text or URL for QR code…" : "Search apps, actions, calculate, or translate…"
+        searchField.setAccessibilityLabel(enabled ? "Text or URL for QR code" : "Search applications, quick links, actions, calculate, or translate")
+        searchField.placeholderString = enabled ? "Text or URL for QR code…" : "Search apps, links, actions, calculate, or translate…"
     }
 
     func updatePrecision(_ decimalPlaces: Int?, isRounding: Bool) {
@@ -416,6 +499,7 @@ final class LauncherHeaderFooter {
         precisionControls.toolTip = help
     }
 
+    var isQuickLinkEscapeKeyPressed: Bool { (quickLinkBackButton as? LauncherOpenButton)?.isEscapeKeyPressed == true }
     var isReturnKeyPressed: Bool { (openButton as? LauncherOpenButton)?.isReturnKeyPressed == true }
     var isResultTabKeyPressed: Bool { (useResultButton as? LauncherOpenButton)?.isTabKeyPressed == true }
     var isResultBackKeyPressed: Bool { (resultBackButton as? LauncherOpenButton)?.isEscapeKeyPressed == true }

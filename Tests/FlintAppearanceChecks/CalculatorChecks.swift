@@ -10,7 +10,7 @@ func checkCalculatorIntegration() {
     let views = calculatorDescendants(of: controller.view)
     let search = views.compactMap { $0 as? NSTextField }.first { $0.isEditable }!
     let result = views.compactMap { $0 as? CalculatorResultView }.first!
-    let scroll = views.compactMap { $0 as? NSScrollView }.first!
+    let scroll = views.compactMap { $0 as? NSScrollView }.first { $0.documentView is NSTableView }!
     let copy = views.compactMap { $0 as? NSButton }.first { $0.action == NSSelectorFromString("openSelectedApplication") }!
     let searchIcon = views.compactMap { $0 as? NSImageView }.first { $0.accessibilityLabel() == "Search" }!
     let calculatorIcon = views.compactMap { $0 as? NSImageView }.first { $0.accessibilityLabel() == "Calculator" }!
@@ -482,7 +482,7 @@ func checkCalculatorToSearchTransitions() {
     let root = controller.view
     let views = calculatorDescendants(of: root)
     let search = views.compactMap { $0 as? NSTextField }.first { $0.isEditable }!
-    let scroll = views.compactMap { $0 as? NSScrollView }.first!
+    let scroll = views.compactMap { $0 as? NSScrollView }.first { $0.documentView is NSTableView }!
     let results = scroll.superview!.superview!
     let top = window.frame.maxY
     let steps = [("1710513000", 24), ("2024-03-15T14:30:00Z", 24), ("2024-02-30T00:00:00Z", 24), ("", 24),

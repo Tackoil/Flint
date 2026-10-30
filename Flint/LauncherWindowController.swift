@@ -26,6 +26,9 @@ final class LauncherWindowController: NSWindowController, NSWindowDelegate {
     var onShowSettings: (() -> Void)? {
         didSet { applicationsController.onShowSettings = onShowSettings }
     }
+    var onCreateQuickLink: (() -> Void)? {
+        didSet { applicationsController.onCreateQuickLink = onCreateQuickLink }
+    }
     var onShowTranslationSettings: (() -> Void)? {
         didSet { applicationsController.onShowTranslationSettings = onShowTranslationSettings }
     }

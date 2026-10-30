@@ -38,5 +38,7 @@ final class SettingsWindowController: NSWindowController {
         window?.makeKeyAndOrderFront(nil)
     }
 
+    func createQuickLink() { settingsController.createQuickLink() }
+
     func showTranslationSettings() { settingsController.showTranslationSettings() }
 }

@@ -46,6 +46,16 @@ The launcher opens as a compact search bar. Type to expand the application resul
 
 Flint also has a flame icon in the menu bar with **Show Flint**, **Settings…**, and **Quit Flint** actions. If another app has reserved the launcher shortcut, use the menu bar to open Flint. Clicking outside the launcher dismisses it.
 
+## Quick Links
+
+Save websites, search URLs, files, folders, and app deeplinks in **Settings → Quick Links**. Use **Add Quick Link…** or search for **Create Quick Link** in Flint and press Return. Give the link a name and destination, then choose **Save Quick Link** (Command–Return). Saved links appear in launcher search alongside applications and actions; click one or press Return to open it.
+
+Destinations accept complete URLs such as `https://github.com`, app deeplinks such as `slack://channel?team=T&id=C`, and absolute paths such as `~/Downloads` or `/Users/you/Projects`. **Open With** optionally chooses an application; **Reset** restores the system default. Files and folders use their native icons in launcher search. Missing files or opening failures show an error in Flint.
+
+Add placeholders to make a search or template link, such as `https://google.com/search?q={query}` or `https://github.com/{org}/{repo}`. Flint shows each argument as a query field beside the search text when you select the link. Press **Tab** from search to complete the selected quick link’s full name and focus the first query, then **Tab** to move to the next query (wrapping after the last). **Shift–Tab** moves to the previous query. **Escape** moves one query left; from the first query, it returns to search. The footer shows **Previous query** or **Search** to match. Entered values are kept. Press **Return** or click **Open Quick Link** to open the completed link; an empty required query receives focus instead. When autocomplete changes the name’s width, the query block slides smoothly to its new position while keeping focus and entered values. Reduce Motion makes the move immediate. The accent-colored focus outline switches directly to the active query, with one brief glow pulse on Tab, Escape, or mouse focus in both light and dark appearances. Reduce Motion keeps the outline steady. Long sets of queries scroll horizontally as you navigate. Repeated placeholders share one value; up to eight different arguments are supported. Raycast-style `{argument}` and `{argument name="Query"}` placeholders also work. URL arguments are percent-encoded so spaces, Unicode, and reserved characters stay inside the supplied value. File path arguments preserve spaces. Every argument is required. Query values stay separate from launcher search and clear when you select another link or reopen Flint.
+
+Select a link in Settings to **Edit…** or **Delete** it. Double-clicking also edits. Deleting asks for confirmation. Changes apply to launcher search immediately and persist between launches.
+
 ## QR Code Generator
 
 Search for **QR Code Generator** (or **qr**) and press **Tab**, **Return**, or click **Generate QR Code**. Type or paste text or a URL to see a centered QR code instantly. **Return** or **Copy QR Code** copies the high-resolution PNG image and dismisses Flint. The preview and copied image keep a white margin for scanning, including in dark mode.
@@ -154,4 +164,4 @@ cognitive --threshold 15 Sources Flint Tests
 
 Desktop appearance checks run offscreen by default and do not activate their windows or take keyboard focus. To intentionally watch the windows during a visual inspection, run `FLINT_UI_TESTS_VISIBLE=1 sh scripts/check-appearance.sh`. Image previews can still be rendered to files while the windows stay offscreen.
 
-This version contains application search and launching, DeepSeek translation, numeric calculations, number base and color conversion, system actions, and shortcut settings.
+This version contains application search and launching, quick links, DeepSeek translation, numeric calculations, number base and color conversion, system actions, and shortcut settings.

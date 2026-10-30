@@ -31,7 +31,12 @@ struct AppearanceChecks {
             checkQRCodeIntegration()
             return
         }
+        if ProcessInfo.processInfo.environment["FLINT_QUICK_LINK_ONLY"] == "1" {
+            checkQuickLinks()
+            return
+        }
         checkQRCodeIntegration()
+        checkQuickLinks()
         let content = NSView(frame: NSRect(x: 0, y: 0, width: 760, height: 560))
         let surface = Appearance.launcherSurface(content: content)
         Appearance.setLauncherCornerRadius(28, on: surface)

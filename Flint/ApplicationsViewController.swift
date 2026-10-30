@@ -36,6 +36,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
 
     var onDismiss: (() -> Void)?
     var onShowSettings: (() -> Void)?
+    var onCreateQuickLink: (() -> Void)?
     var onShowTranslationSettings: (() -> Void)?
     var onDisplayModeChange: ((LauncherDisplayMode) -> Void)?
     private let chrome = LauncherHeaderFooter()
@@ -66,6 +67,9 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     private let statusLabel = Appearance.label("Finding your applications…", size: 14)
     private let iconCache = NSCache<NSString, NSImage>()
     private var applications: [ApplicationRecord] = []
+    private let quickLinkStore: QuickLinkStore
+    private let openQuickLinkURL: @MainActor (QuickLink, URL, @escaping (Error?) -> Void) -> Void
+    private var quickLinkObserver: NSObjectProtocol?
     private var results: [LauncherItem] = []
     private let actionExecutor = SystemActionExecutor()
     private let errorNotifier = LauncherErrorNotifier()
@@ -83,10 +87,18 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     }
 
     init(translationSession: TranslationSession? = nil,
-         translationPreferences: TranslationPreferences = TranslationPreferences()) {
+         translationPreferences: TranslationPreferences = TranslationPreferences(),
+         quickLinkStore: QuickLinkStore = QuickLinkStore(),
+         openQuickLinkURL: @escaping @MainActor (QuickLink, URL, @escaping (Error?) -> Void) -> Void = QuickLinkOpener.open) {
         self.translationSession = translationSession ?? TranslationSession()
         self.translationPreferences = translationPreferences
+        self.quickLinkStore = quickLinkStore
+        self.openQuickLinkURL = openQuickLinkURL
         super.init(nibName: nil, bundle: nil)
+    }
+
+    deinit {
+        if let quickLinkObserver { NotificationCenter.default.removeObserver(quickLinkObserver) }
     }
 
     required init?(coder: NSCoder) { fatalError("Use init()") }
@@ -120,8 +132,31 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         chrome.translationExitButton.action = #selector(exitTranslationMode)
         chrome.translationModeButton.target = self
         chrome.translationModeButton.action = #selector(toggleTranslationLanguageSwitchingMode)
+        chrome.quickLinkQueries.onSubmit = { [weak self] in
+            guard let self, !self.chrome.isReturnKeyPressed else { return }
+            self.openSelectedApplication()
+        }
+        chrome.quickLinkBackButton.target = self
+        chrome.quickLinkBackButton.action = #selector(moveToPreviousQuery)
+        chrome.quickLinkQueries.onEscape = { [weak self] in
+            guard let self, !self.chrome.isQuickLinkEscapeKeyPressed else { return }
+            self.moveToPreviousQuery()
+        }
+        chrome.quickLinkQueries.onReturnToSearch = { [weak self] in self?.focusSearchAfterQueries() }
+        chrome.quickLinkQueries.onFocusChange = { [weak self] in
+            guard let self else { return }
+            if self.chrome.quickLinkQueries.isEditing { self.prepareToEditQueries() }
+            self.updateSelection()
+        }
         translationView.onExit = { [weak self] in self?.exitTranslationMode() }
         translationSession.onChange = { [weak self] in self?.applyQuery() }
+        quickLinkObserver = NotificationCenter.default.addObserver(forName: QuickLinkStore.didChange,
+                                                                  object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.iconCache.removeAllObjects()
+                self?.applyQuery()
+            }
+        }
         refreshApplications()
     }
 
@@ -142,7 +177,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         tableView.dataSource = self
         tableView.target = self
         tableView.action = #selector(openClickedApplication)
-        tableView.setAccessibilityLabel("Applications and actions")
+        tableView.setAccessibilityLabel("Applications, quick links, and actions")
         scrollView.documentView = tableView
         scrollView.drawsBackground = false
         scrollView.hasVerticalScroller = true
@@ -240,6 +275,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
 
     func resetSearch() {
         _ = view
+        chrome.setQuickLinkQueries(nil)
         resultInputs.removeAll()
         isRoundingEnabled = true
         colorOutputFormat = nil
@@ -283,7 +319,8 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
             results = []
             return
         }
-        let items = applications.map(LauncherItem.application) + SystemAction.allCases.map(LauncherItem.action) + [.translation, .qrCode]
+        let items = applications.map(LauncherItem.application) + SystemAction.allCases.map(LauncherItem.action)
+            + quickLinkStore.links.map(LauncherItem.quickLink) + [.translation, .createQuickLink, .qrCode]
         let evaluated = Calculator.evaluate(query, timestampUnit: timestampOutputUnit, colorFormat: colorOutputFormat,
                                             numberBaseFormat: numberBaseOutputFormat)
         if case .numeric(let previous) = calculation, case .numeric(let current) = evaluated,
@@ -375,11 +412,12 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     private func updateEmptyState(hasQuery: Bool) {
         statusLabel.isHidden = isTranslationMode || isQRCodeMode || calculation != nil || !results.isEmpty || !hasQuery
         statusLabel.stringValue = isLoading ? "Finding your applications…"
-            : "No applications or actions found\nTry a different name."
+            : "No applications, quick links, or actions found\nTry a different name."
     }
 
     private func updateSelection() {
         let row = tableView.selectedRow
+        chrome.setQuickLinkQueries(selectedQueryLink)
         chrome.updateActionTitle(conversionActionTitle(row: row), hint: selectedToolUsesTab ? .tab : .returnKey)
         let visible = tableView.rows(in: tableView.visibleRect)
         guard visible.location != NSNotFound else { return }
@@ -443,8 +481,90 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     }
 
     private func activateUtility(_ item: LauncherItem) {
+        if case .quickLink(let link) = item { openQuickLink(link); return }
+        if item == .createQuickLink { onCreateQuickLink?(); return }
         if item == .translation { enterTranslationMode() }
         if item == .qrCode { enterQRCodeMode() }
+    }
+
+    private var selectedQueryLink: QuickLink? {
+        guard !isTranslationMode, !isQRCodeMode, calculation == nil, case .quickLink(let link) = selectedItem,
+              !link.arguments.isEmpty else { return nil }
+        return link
+    }
+
+    private func openQuickLink(_ link: QuickLink) {
+        guard !link.arguments.isEmpty else { resolveQuickLink(link, values: [:]); return }
+        chrome.setQuickLinkQueries(link)
+        prepareToEditQueries()
+        guard !chrome.quickLinkQueries.focusFirstMissing() else { return }
+        resolveQuickLink(link, values: chrome.quickLinkQueries.values)
+    }
+
+    private func prepareToEditQueries() {
+        resultInputs.removeAll()
+        chrome.setResultBackAvailable(false)
+    }
+
+    @objc private func moveToPreviousQuery() { chrome.quickLinkQueries.moveLeft() }
+
+    private func focusSearchAfterQueries() {
+        view.window?.makeFirstResponder(chrome.searchField)
+        updateSelection()
+    }
+
+    private func handleQuickLinkCommand(_ selector: Selector, textView: NSTextView) -> Bool {
+        guard selector == #selector(NSResponder.insertTab(_:)), !textView.hasMarkedText(),
+              !isOpening, !isPresentingDialog, let link = selectedQueryLink,
+              NSApp.currentEvent?.modifierFlags.intersection([.command, .option, .control, .shift]).isEmpty != false else {
+            return false
+        }
+        if NSApp.currentEvent?.isARepeat != true {
+            prepareToEditQueries()
+            completeQuickLinkSearch(link)
+            chrome.quickLinkQueries.focusFirst()
+        }
+        return true
+    }
+
+    private func completeQuickLinkSearch(_ link: QuickLink) {
+        guard chrome.searchField.stringValue != link.name else { return }
+        chrome.animateQueryCompletion {
+            let values = chrome.quickLinkQueries.values
+            chrome.searchField.stringValue = link.name
+            applyQuery()
+            guard let row = results.firstIndex(of: .quickLink(link)) else { return }
+            tableView.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+            tableView.scrollRowToVisible(row)
+            updateSelection()
+            chrome.quickLinkQueries.restoreValues(values)
+        }
+    }
+
+    private func resolveQuickLink(_ link: QuickLink, values: [String: String]) {
+        do {
+            let url = try link.resolvedURL(values: values)
+            isOpening = true
+            chrome.openButton.isEnabled = false
+            openQuickLinkURL(link, url) { [weak self] error in
+                guard let self else { return }
+                self.isOpening = false
+                self.chrome.openButton.isEnabled = !self.results.isEmpty
+                self.updateSelection()
+                if let error {
+                    self.showQuickLinkError(link, error: error)
+                } else {
+                    self.onDismiss?()
+                }
+            }
+        } catch {
+            showQuickLinkError(link, error: error)
+        }
+    }
+
+    private func showQuickLinkError(_ link: QuickLink, error: Error) {
+        presentDialog(title: "Couldn’t open \(link.name)", message: error.localizedDescription,
+                      buttonTitles: ["OK"]) { _ in }
     }
 
     private var translationActionTitle: String {
@@ -615,6 +735,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         animateTabFeedback(for: commandSelector, editor: textView)
         if handleResultBackCommand(commandSelector) { return true }
         if handleResultInsertionCommand(commandSelector, textView: textView) { return true }
+        if handleQuickLinkCommand(commandSelector, textView: textView) { return true }
         if handleToolCommand(commandSelector) { return true }
         if handleTranslationNavigationCommand(commandSelector) { return true }
         if handleConversionCommand(commandSelector) { return true }
@@ -972,7 +1093,11 @@ extension ApplicationsViewController: NSTableViewDataSource, NSTableViewDelegate
         if case .action(let action) = item {
             return NSImage(systemSymbolName: action.symbolName, accessibilityDescription: action.name) ?? NSImage()
         }
-        let symbol = item == .qrCode ? "qrcode" : "character.bubble"
+        if case .quickLink(let link) = item, let url = try? link.resolvedURL(), url.isFileURL {
+            return NSWorkspace.shared.icon(forFile: url.path)
+        }
+        let symbols: [LauncherItem: String] = [.translation: "character.bubble", .qrCode: "qrcode"]
+        let symbol = symbols[item] ?? "link"
         return NSImage(systemSymbolName: symbol, accessibilityDescription: item.name) ?? NSImage()
     }
 }

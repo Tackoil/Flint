@@ -4,9 +4,21 @@ import ServiceManagement
 @MainActor
 final class SettingsViewController: NSViewController {
     private enum Section: Int, CaseIterable {
-        case general, translation
-        var title: String { self == .general ? "General" : "Translation" }
-        var symbol: String { self == .general ? "gearshape" : "character.bubble" }
+        case general, quickLinks, translation
+        var title: String {
+            switch self {
+            case .general: return "General"
+            case .quickLinks: return "Quick Links"
+            case .translation: return "Translation"
+            }
+        }
+        var symbol: String {
+            switch self {
+            case .general: return "gearshape"
+            case .quickLinks: return "link"
+            case .translation: return "character.bubble"
+            }
+        }
     }
 
     private let preferences: LauncherPreferences
@@ -24,6 +36,7 @@ final class SettingsViewController: NSViewController {
     private let content = NSStackView()
     private var sectionButtons: [NSButton] = []
     private var selectionSurfaces: [NSView] = []
+    private lazy var quickLinkSettings = QuickLinkSettingsView()
     private lazy var translationSettings = TranslationSettingsView()
     private var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.0"
@@ -236,7 +249,18 @@ final class SettingsViewController: NSViewController {
         }
         addContent(label(section.title, size: 20, weight: .bold, color: Appearance.text))
         if section == .general { addGeneralContent() }
+        if section == .quickLinks {
+            quickLinkSettings.reload()
+            addContent(quickLinkSettings)
+        }
         if section == .translation { addContent(translationSettings) }
+    }
+
+    func createQuickLink() {
+        _ = view
+        cancelRecording()
+        showSection(.quickLinks)
+        quickLinkSettings.addLink()
     }
 
     func showTranslationSettings() {
