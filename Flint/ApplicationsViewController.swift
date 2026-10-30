@@ -311,9 +311,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     }
 
     private func updateQueryContent(_ query: String, isExpanded: Bool) {
-        translationSession.update(query: isTranslationMode ? TranslationQuery(text: chrome.searchField.stringValue) : nil,
-                                  language: translationPreferences.targetLanguage,
-                                  isComposing: (chrome.searchField.currentEditor() as? NSTextView)?.hasMarkedText() == true)
+        updateTranslationSession()
         if isTranslationMode || isQRCodeMode {
             calculation = nil
             results = []
@@ -332,6 +330,16 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         results = isExpanded && calculation == nil ? ApplicationSearch.filter(items, query: query) : []
     }
 
+    private func updateTranslationSession() {
+        translationSession.update(query: isTranslationMode ? TranslationQuery(text: chrome.searchField.stringValue) : nil,
+                                  language: translationPreferences.targetLanguage,
+                                  isComposing: (chrome.searchField.currentEditor() as? NSTextView)?.hasMarkedText() == true,
+                                  targetLanguages: translationPreferences.targetLanguages)
+        if isTranslationMode, translationPreferences.targetLanguages.contains(translationSession.language) {
+            translationPreferences.targetLanguage = translationSession.language
+        }
+    }
+
     private func updateToolViews() {
         calculatorView.isHidden = calculation == nil
         scrollView.isHidden = calculation != nil || isTranslationMode || isQRCodeMode
@@ -341,7 +349,8 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         chrome.setTranslationMode(isTranslationMode)
         chrome.setQRCodeMode(isQRCodeMode)
         chrome.setTranslationLanguageSwitching(isTranslationMode ? translationPreferences : nil,
-                                               isEnabled: isTranslationLanguageSwitchingEnabled)
+                                               isEnabled: isTranslationLanguageSwitchingEnabled,
+                                               source: translationSession.sourceLanguage, selected: translationSession.language)
         if isTranslationMode {
             translationView.configure(translationSession, preferences: translationPreferences, direction: translationSwitchDirection)
         }
@@ -875,9 +884,11 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         guard let offset = offsets[selector], isTranslationLanguageSwitchingEnabled else { return false }
         chrome.performAfterKeyRelease(offset < 0 ? .leftArrow : .rightArrow) { [weak self] in
             guard let self, self.isTranslationMode, self.isTranslationLanguageSwitchingEnabled else { return }
+            guard self.translationPreferences.availableTargets(excluding: self.translationSession.sourceLanguage).count > 1 else { return }
             self.translationSwitchDirection = offset
             defer { self.translationSwitchDirection = 0 }
-            self.translationPreferences.targetLanguage = self.translationPreferences.targetLanguage(shiftedBy: offset)
+            self.translationPreferences.targetLanguage = self.translationPreferences.targetLanguage(
+                shiftedBy: offset, excluding: self.translationSession.sourceLanguage, from: self.translationSession.language)
             self.applyQuery()
         }
         return true
@@ -890,7 +901,8 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
 
     private func setTranslationLanguageSwitchingEnabled(_ enabled: Bool) {
         isTranslationLanguageSwitchingEnabled = enabled
-        chrome.setTranslationLanguageSwitching(translationPreferences, isEnabled: enabled)
+        chrome.setTranslationLanguageSwitching(translationPreferences, isEnabled: enabled,
+                                               source: translationSession.sourceLanguage, selected: translationSession.language)
         if chrome.searchField.currentEditor() == nil { view.window?.makeFirstResponder(chrome.searchField) }
     }
 

@@ -74,6 +74,33 @@ struct TranslationTests {
         #expect(preferences.targetLanguage(shiftedBy: 1) == .french)
     }
 
+    @Test(arguments: [("en-US", TranslationLanguage.english), ("pt-BR", .portuguese),
+                      ("zh-Hans", .simplifiedChinese), ("zh-Hant", .traditionalChinese),
+                      ("zh-TW", .traditionalChinese), ("ja", .japanese)])
+    func matchesSourceLanguageIncludingRegionsAndChineseScripts(example: (String, TranslationLanguage)) {
+        let source = InferredSourceLanguage(code: example.0)
+        #expect(example.1.matches(source))
+        #expect(TranslationLanguage.allCases.filter { $0.matches(source) } == [example.1])
+    }
+
+    @Test func sourceTargetsAreHiddenWithoutChangingSavedLanguages() throws {
+        let suite = "FlintTranslationTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let preferences = TranslationPreferences(defaults: defaults)
+        preferences.targetLanguages = [.english, .japanese, .simplifiedChinese]
+        preferences.targetLanguage = .japanese
+        let source = InferredSourceLanguage(code: "en-GB")
+        #expect(preferences.availableTargets(excluding: source) == [.japanese, .simplifiedChinese])
+        #expect(preferences.targetLanguage(shiftedBy: -1, excluding: source) == .simplifiedChinese)
+        #expect(preferences.targetLanguage(shiftedBy: 1, excluding: source) == .simplifiedChinese)
+        #expect(preferences.availableTargets(excluding: nil) == [.english, .japanese, .simplifiedChinese])
+        preferences.targetLanguages = [.english]
+        #expect(preferences.availableTargets(excluding: source) == [.simplifiedChinese])
+        #expect(preferences.targetLanguages == [.english])
+        #expect(TranslationLanguage.targets(in: [.simplifiedChinese], excluding: .init(code: "zh-Hans")) == [.english])
+    }
+
     @Test func unlockedAPIKeyIsReusedUntilReplacedOrRemoved() throws {
         let cache = TranslationAPIKeyCache()
         var reads = 0
@@ -118,13 +145,45 @@ struct TranslationTests {
             let messages = try #require(body["messages"] as? [[String: String]])
             #expect(messages[0]["content"]?.contains("Japanese") == true)
             #expect(messages[0]["content"]?.contains("source_language") == true)
+            #expect(messages[0]["content"]?.contains("standalone word or phrase") == true)
+            #expect(messages[0]["content"]?.contains("alternate_meanings") == true)
+            #expect(messages[0]["content"]?.contains("All translated text, explanations, and alternate meanings must be in Japanese.") == true)
+            #expect(messages[0]["content"]?.contains("银行") == false)
             #expect(messages[1] == ["role": "user", "content": "Hello\nworld"])
             return try translationResponse("こんにちは\n世界", sourceLanguage: "en")
         }
         let result = try await client.translate("Hello\nworld", to: .japanese, apiKey: " test-key ")
         #expect(result.text == "こんにちは\n世界")
         #expect(result.sourceLanguage == .init(code: "en", origin: .deepSeek))
+        #expect(result.explanation == nil && result.alternateMeanings.isEmpty)
         #expect(await requests.count == 1)
+    }
+
+    @Test func decodesWordExplanationAndDistinctMeanings() async throws {
+        let client = DeepSeekTranslationClient { _ in
+            try translationPayloadResponse(["translation": "银行", "source_language": "en",
+                "explanation": "  办理存贷款等业务的金融机构。 \n",
+                "alternate_meanings": [" 河岸：河流两侧的陆地。 ", " \n "]])
+        }
+        let result = try await client.translate("bank", to: .simplifiedChinese, apiKey: "test")
+        #expect(result.text == "银行")
+        #expect(result.explanation == "办理存贷款等业务的金融机构。")
+        #expect(result.alternateMeanings == ["河岸：河流两侧的陆地。"])
+    }
+
+    @Test(arguments: [#"{"translation":"你好","explanation":null,"alternate_meanings":null}"#,
+                      #"{"translation":"你好","explanation":123,"alternate_meanings":"wrong type"}"#,
+                      #"{"translation":"你好","explanation":" \n ","alternate_meanings":[]}"#])
+    func optionalDetailsNeverDiscardAValidTranslation(_ content: String) async throws {
+        let client = DeepSeekTranslationClient { _ in
+            let data = try JSONSerialization.data(withJSONObject: [
+                "choices": [["message": ["content": content], "finish_reason": "stop"]]
+            ])
+            return (data, response("").1)
+        }
+        let result = try await client.translate("Hello", to: .simplifiedChinese, apiKey: "test")
+        #expect(result.text == "你好")
+        #expect(result.explanation == nil && result.alternateMeanings.isEmpty)
     }
 
     @Test(arguments: [401, 403, 402, 429, 500, 503, 400, 422])
@@ -273,6 +332,10 @@ private func response(_ body: String, status: Int = 200) -> (Data, URLResponse) 
 private func translationResponse(_ translation: String, sourceLanguage: String? = nil) throws -> (Data, URLResponse) {
     var payload = ["translation": translation]
     payload["source_language"] = sourceLanguage
+    return try translationPayloadResponse(payload)
+}
+
+private func translationPayloadResponse(_ payload: [String: Any]) throws -> (Data, URLResponse) {
     let content = String(data: try JSONSerialization.data(withJSONObject: payload), encoding: .utf8)!
     let data = try JSONSerialization.data(withJSONObject: [
         "choices": [["message": ["content": content], "finish_reason": "stop"]]
@@ -335,6 +398,79 @@ private actor ControlledTypingPause {
 
 @MainActor
 struct TranslationSessionTests {
+    @Test func localSourceIsSkippedBeforeSendingTheFirstRequest() async {
+        let requests = TranslationRequestCounter()
+        let client = DeepSeekTranslationClient { request in
+            await requests.record()
+            let body = try JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]
+            let prompt = (body["messages"] as! [[String: String]])[0]["content"]!
+            #expect(prompt.contains("into Japanese"))
+            return try translationResponse("不安な", sourceLanguage: "en")
+        }
+        let session = TranslationSession(client: client, inferSourceLanguage: { _ in .init(code: "en") },
+                                         readAPIKey: { "test" })
+        session.update(query: .init(text: "anxious"), language: .english, targetLanguages: [.english, .japanese])
+        await withCheckedContinuation { done in
+            session.onChange = { if session.state.answer != nil { done.resume() } }
+            session.submit()
+        }
+        session.onChange = nil
+        #expect(session.language == .japanese && session.state.answer == "不安な")
+        #expect(await requests.count == 1)
+        session.update(query: .init(text: "anxious"), language: .english, targetLanguages: [.english, .japanese])
+        #expect(session.language == .japanese && session.sourceLanguage?.code == "en")
+        session.cancel()
+    }
+
+    @Test func providerSourceCorrectionDiscardsSameLanguageResponseAndRetargets() async {
+        let requests = TranslationRequestCounter()
+        let client = DeepSeekTranslationClient { request in
+            await requests.record()
+            let body = try JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]
+            let prompt = (body["messages"] as! [[String: String]])[0]["content"]!
+            return try translationResponse(prompt.contains("into Japanese") ? "不安な" : "焦虑的", sourceLanguage: "en")
+        }
+        let session = TranslationSession(client: client, inferSourceLanguage: { _ in nil },
+                                         waitForTypingPause: {}, readAPIKey: { "test" })
+        session.update(query: .init(text: "anxious"), language: .english, targetLanguages: [.english, .japanese])
+        await withCheckedContinuation { done in
+            session.onChange = { if session.state.answer != nil { done.resume() } }
+            session.submit()
+        }
+        session.onChange = nil
+        #expect(session.language == .japanese && session.state.answer == "不安な")
+        #expect(session.cachedResponse(for: .english) == nil)
+        #expect(await requests.count == 2)
+        session.cancel()
+    }
+
+    @Test func cachesDetailsWithSourceFallbackAndClearsThemAfterEditing() async throws {
+        let client = DeepSeekTranslationClient { _ in
+            try translationPayloadResponse(["translation": "银行", "explanation": "金融机构。",
+                                            "alternate_meanings": ["河岸：河流的边缘。"]])
+        }
+        let session = TranslationSession(client: client, inferSourceLanguage: { _ in .init(code: "en") },
+                                         readAPIKey: { "test" })
+        let query = TranslationQuery(text: "bank")
+        session.update(query: query, language: .simplifiedChinese)
+        await withCheckedContinuation { done in
+            session.onChange = { if session.state.answer != nil { done.resume() } }
+            session.submit()
+        }
+        session.onChange = nil
+        let expected = TranslationResponse(text: "银行", sourceLanguage: .init(code: "en"),
+                                           explanation: "金融机构。", alternateMeanings: ["河岸：河流的边缘。"])
+        #expect(session.cachedResponse(for: .simplifiedChinese) == expected)
+        session.update(query: query, language: .japanese)
+        session.update(query: query, language: .simplifiedChinese)
+        #expect(session.state.answer == "银行")
+        #expect(session.cachedResponse(for: .simplifiedChinese) == expected)
+        session.update(query: .init(text: "river bank"), language: .simplifiedChinese)
+        #expect(session.cachedResponse(for: .simplifiedChinese) == nil)
+        #expect(session.state.answer == nil)
+        session.cancel()
+    }
+
     @Test func missingKeyAndLengthErrorsAreActionable() {
         let session = TranslationSession(readAPIKey: { nil })
         session.update(query: .init(text: "Hello"), language: .english)

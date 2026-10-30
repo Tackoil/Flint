@@ -32,6 +32,18 @@ struct InferredSourceLanguage: Equatable, Sendable {
 struct TranslationResponse: Equatable, Sendable {
     let text: String
     let sourceLanguage: InferredSourceLanguage?
+    let explanation: String?
+    let alternateMeanings: [String]
+
+    init(text: String, sourceLanguage: InferredSourceLanguage?, explanation: String? = nil,
+         alternateMeanings: [String] = []) {
+        self.text = text
+        self.sourceLanguage = sourceLanguage
+        let explanation = explanation?.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.explanation = explanation?.isEmpty == false ? explanation : nil
+        self.alternateMeanings = alternateMeanings.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+    }
 }
 
 enum SourceLanguageInference {
@@ -61,6 +73,25 @@ enum TranslationLanguage: String, CaseIterable, Sendable {
     case french = "French", german = "German", spanish = "Spanish", portuguese = "Portuguese"
     case italian = "Italian", russian = "Russian", arabic = "Arabic", hindi = "Hindi"
     case vietnamese = "Vietnamese", thai = "Thai"
+
+    func matches(_ source: InferredSourceLanguage) -> Bool {
+        let codes: [Self: String] = [
+            .simplifiedChinese: "zh-Hans", .traditionalChinese: "zh-Hant", .english: "en",
+            .japanese: "ja", .korean: "ko", .french: "fr", .german: "de", .spanish: "es",
+            .portuguese: "pt", .italian: "it", .russian: "ru", .arabic: "ar", .hindi: "hi",
+            .vietnamese: "vi", .thai: "th"
+        ]
+        let detected = Locale.Language(identifier: source.code)
+        let target = Locale.Language(identifier: codes[self]!)
+        guard detected.languageCode == target.languageCode else { return false }
+        return target.languageCode?.identifier != "zh" || detected.script == target.script
+    }
+
+    static func targets(in saved: [Self], excluding source: InferredSourceLanguage?) -> [Self] {
+        guard let source else { return saved }
+        let targets = saved.filter { !$0.matches(source) }
+        return targets.isEmpty ? [Self.english.matches(source) ? .simplifiedChinese : .english] : targets
+    }
 }
 
 final class TranslationPreferences {
@@ -100,9 +131,14 @@ final class TranslationPreferences {
         return result
     }
 
-    func targetLanguage(shiftedBy offset: Int) -> TranslationLanguage {
-        let languages = targetLanguages
-        let current = languages.firstIndex(of: targetLanguage) ?? 0
+    func availableTargets(excluding source: InferredSourceLanguage?) -> [TranslationLanguage] {
+        TranslationLanguage.targets(in: targetLanguages, excluding: source)
+    }
+
+    func targetLanguage(shiftedBy offset: Int, excluding source: InferredSourceLanguage? = nil,
+                        from selected: TranslationLanguage? = nil) -> TranslationLanguage {
+        let languages = availableTargets(excluding: source)
+        let current = languages.firstIndex(of: selected ?? targetLanguage) ?? 0
         let index = (current + offset % languages.count + languages.count) % languages.count
         return languages[index]
     }

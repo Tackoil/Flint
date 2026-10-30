@@ -24,6 +24,7 @@ final class TranslationSession {
     private var task: Task<Void, Never>?
     private var generation = 0
     private var responses: [TranslationLanguage: TranslationResponse] = [:]
+    private var targetLanguages: [TranslationLanguage]?
     private(set) var query: TranslationQuery?
     private(set) var language: TranslationLanguage = .simplifiedChinese
     private(set) var sourceLanguage: InferredSourceLanguage?
@@ -42,15 +43,26 @@ final class TranslationSession {
         self.readAPIKey = readAPIKey
     }
 
-    func update(query: TranslationQuery?, language: TranslationLanguage, isComposing: Bool = false) {
+    func update(query: TranslationQuery?, language: TranslationLanguage, isComposing: Bool = false,
+                targetLanguages: [TranslationLanguage]? = nil) {
+        self.targetLanguages = targetLanguages
+        let source = self.query == query && !isComposing ? sourceLanguage : nil
+        let language = resolvedLanguage(language, source: source)
         guard self.query != query || self.language != language || self.isComposing != isComposing else { return }
         stopPendingTranslation()
+        sourceLanguage = source
         if self.query != query { responses.removeAll() }
         self.query = query
         self.language = language
         self.isComposing = isComposing
         if restoreCachedResponse() { return }
         scheduleTranslation()
+    }
+
+    private func resolvedLanguage(_ preferred: TranslationLanguage, source: InferredSourceLanguage?) -> TranslationLanguage {
+        guard let targetLanguages, !targetLanguages.isEmpty else { return preferred }
+        let available = TranslationLanguage.targets(in: targetLanguages, excluding: source)
+        return available.contains(preferred) ? preferred : available[0]
     }
 
     func cachedResponse(for language: TranslationLanguage) -> TranslationResponse? {
@@ -106,7 +118,8 @@ final class TranslationSession {
             return
         }
         if restoreCachedResponse() { onChange?(); return }
-        sourceLanguage = inferSourceLanguage(query.text)
+        sourceLanguage = sourceLanguage ?? inferSourceLanguage(query.text)
+        language = resolvedLanguage(language, source: sourceLanguage)
         do {
             guard let key = try readAPIKey(), !key.isEmpty else {
                 setState(.needsAPIKey)
@@ -129,7 +142,16 @@ final class TranslationSession {
                 let response = try await client.translate(text, to: language, apiKey: key)
                 guard !Task.isCancelled, let self, self.generation == current else { return }
                 self.sourceLanguage = response.sourceLanguage ?? self.sourceLanguage
-                self.responses[language] = TranslationResponse(text: response.text, sourceLanguage: self.sourceLanguage)
+                let target = self.resolvedLanguage(self.language, source: self.sourceLanguage)
+                if target != self.language {
+                    self.language = target
+                    self.scheduleTranslation()
+                    self.onChange?()
+                    return
+                }
+                self.responses[language] = TranslationResponse(text: response.text, sourceLanguage: self.sourceLanguage,
+                                                              explanation: response.explanation,
+                                                              alternateMeanings: response.alternateMeanings)
                 self.setState(.translated(response.text))
             } catch {
                 guard !Task.isCancelled, let self, self.generation == current else { return }

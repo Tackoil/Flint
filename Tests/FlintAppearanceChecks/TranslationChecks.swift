@@ -7,6 +7,8 @@ func checkTranslationIntegration() {
     checkSearchTabFocus()
     checkTranslationSkeletonStates()
     checkTranslationKeyboardNavigation()
+    checkTranslationSourceTargets()
+    checkTranslationMeanings()
     let session = TranslationSession(readAPIKey: { nil })
     let controller = ApplicationsViewController(translationSession: session)
     let window = AppearanceCheckWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
@@ -62,9 +64,138 @@ func checkTranslationIntegration() {
     print("PASS: Translate uses action search, Tab enters, Return does not enter, input waits for a pause, and missing-key setup and Escape work")
 }
 
+@MainActor
+private func checkTranslationMeanings() {
+    let suite = "FlintTranslationMeaningChecks-\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let preferences = TranslationPreferences(defaults: defaults)
+    preferences.targetLanguages = [.simplifiedChinese]
+    let client = DeepSeekTranslationClient { request in
+        var payload: [String: Any] = ["translation": "银行", "source_language": "en",
+            "explanation": "指办理存款、贷款等金融业务的机构。例如：去银行开户。",
+            "alternate_meanings": ["河岸：河流两侧的陆地。例如：坐在河岸边。",
+                                   "储备库：集中储存某种资源的地方，例如血库或数据库。",
+                                   "倾斜转弯：飞机或车辆在转弯时向一侧倾斜。"]]
+        let body = try JSONSerialization.jsonObject(with: request.httpBody!) as! [String: Any]
+        let input = (body["messages"] as! [[String: String]]).last!["content"]
+        if input == "bank (long definitions)" {
+            payload["explanation"] = String(repeating: "指办理存款、贷款等金融业务的机构。例如：去银行开户。\n", count: 20)
+        }
+        let content = String(data: try JSONSerialization.data(withJSONObject: payload), encoding: .utf8)!
+        let data = try JSONSerialization.data(withJSONObject: [
+            "choices": [["message": ["content": content], "finish_reason": "stop"]]
+        ])
+        return (data, HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+    }
+    let session = TranslationSession(client: client, readAPIKey: { "test-key" })
+    let controller = ApplicationsViewController(translationSession: session, translationPreferences: preferences)
+    let window = AppearanceCheckWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
+                                       styleMask: [.borderless], backing: .buffered, defer: false)
+    window.contentViewController = controller
+    let views = translationDescendants(controller.view)
+    let search = views.compactMap { $0 as? NSTextField }.first { $0.isEditable }!
+    search.stringValue = "translate"
+    controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
+    _ = controller.control(search, textView: NSTextView(), doCommandBy: #selector(NSResponder.insertTab(_:)))
+    search.stringValue = "bank"
+    controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
+    waitForTranslation(session, answer: "银行")
+    let result = views.compactMap { $0 as? TranslationResultView }.first!
+    let output = translationDescendants(result).compactMap { $0 as? NSTextView }.first!
+    precondition(output.string.hasPrefix("银行\n\nMeaning\n"))
+    precondition(output.string.contains("\n\nOther meanings\n1. 河岸"))
+    precondition(output.string.contains("\n\n2. 储备库") && output.string.contains("\n\n3. 倾斜转弯"))
+    let font = output.textStorage!.attribute(.font, at: 0, effectiveRange: nil) as! NSFont
+    let detailFont = output.textStorage!.attribute(.font, at: output.string.count - 1, effectiveRange: nil) as! NSFont
+    precondition(font.pointSize > detailFont.pointSize, "The primary translation must remain visually prominent")
+    for (name, appearance) in [("meanings-light", NSAppearance.Name.aqua), ("meanings-dark", .darkAqua)] {
+        controller.view.appearance = NSAppearance(named: appearance)
+        renderTranslationPreview(controller.view, name: name)
+    }
+    preferences.targetLanguages = [.simplifiedChinese, .japanese]
+    result.configure(session, preferences: preferences)
+    renderTranslationPreview(controller.view, name: "meanings-with-preview")
+    search.stringValue = "bank (long definitions)"
+    controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
+    waitForTranslation(session, answer: "银行")
+    renderTranslationPreview(controller.view, name: "meanings-scrolling")
+    precondition(output.frame.height > output.enclosingScrollView!.bounds.height, "Long meaning lists must scroll")
+    let pasteboard = NSPasteboard.withUniqueName()
+    defer { pasteboard.releaseGlobally() }
+    controller.copyTranslationAnswer(to: pasteboard)
+    precondition(pasteboard.string(forType: .string) == "银行", "Copy Translation must copy only the primary translation")
+    search.stringValue = "river bank"
+    controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
+    precondition(output.string.isEmpty, "Editing must clear every section of the previous result")
+    controller.resetSearch()
+    print("PASS: word descriptions and numbered alternate meanings render below the translation, scroll, copy cleanly, and clear on edit")
+}
+
+private struct TranslationSourceCheckClient: TranslationServing {
+    func translate(_ text: String, to language: TranslationLanguage, apiKey: String) async throws -> TranslationResponse {
+        let translations: [TranslationLanguage: String] = [.english: "anxious", .simplifiedChinese: "焦虑的", .japanese: "不安な"]
+        return TranslationResponse(text: translations[language]!, sourceLanguage: .init(code: "en", origin: .deepSeek))
+    }
+}
+
+@MainActor
+private func checkTranslationSourceTargets() {
+    let suite = "FlintTranslationSourceChecks-\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+    let preferences = TranslationPreferences(defaults: defaults)
+    let saved: [TranslationLanguage] = [.english, .simplifiedChinese, .japanese]
+    preferences.targetLanguages = saved
+    preferences.targetLanguage = .english
+    let session = TranslationSession(client: TranslationSourceCheckClient(),
+                                     inferSourceLanguage: { _ in .init(code: "en") }, readAPIKey: { "test-key" })
+    let controller = ApplicationsViewController(translationSession: session, translationPreferences: preferences)
+    let window = AppearanceCheckWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
+                                       styleMask: [.borderless], backing: .buffered, defer: false)
+    window.contentViewController = controller
+    let views = translationDescendants(controller.view)
+    let search = views.compactMap { $0 as? NSTextField }.first { $0.isEditable }!
+    let result = views.compactMap { $0 as? TranslationResultView }.first!
+    let candidate = translationDescendants(result).compactMap { $0 as? TranslationCandidatePreviewView }.first!
+    let editor = NSTextView()
+    search.stringValue = "translate"
+    controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
+    _ = controller.control(search, textView: editor, doCommandBy: #selector(NSResponder.insertTab(_:)))
+    search.stringValue = "anxious"
+    controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
+    waitForTranslation(session, answer: "焦虑的")
+    precondition(session.language == .simplifiedChinese && preferences.targetLanguage == .simplifiedChinese)
+    precondition(candidate.language == .japanese && preferences.targetLanguages == saved)
+    for (name, appearance) in [("skip-source-light", NSAppearance.Name.aqua), ("skip-source-dark", .darkAqua)] {
+        controller.view.appearance = NSAppearance(named: appearance)
+        renderTranslationPreview(controller.view, name: name)
+    }
+    _ = controller.control(search, textView: editor, doCommandBy: #selector(NSResponder.moveRight(_:)))
+    waitForTranslation(session, answer: "不安な")
+    precondition(candidate.language == .simplifiedChinese)
+    _ = controller.control(search, textView: editor, doCommandBy: #selector(NSResponder.moveRight(_:)))
+    precondition(session.state.answer == "焦虑的", "Cycling must wrap directly past the source language to the cached target")
+    preferences.targetLanguages = [.english, .japanese]
+    controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
+    precondition(session.language == .japanese && candidate.isHidden, "A single remaining target must hide the next preview")
+    preferences.targetLanguages = [.english]
+    controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
+    waitForTranslation(session, answer: "焦虑的")
+    precondition(candidate.isHidden && preferences.targetLanguages == [.english])
+    _ = controller.control(search, textView: editor, doCommandBy: #selector(NSResponder.moveRight(_:)))
+    precondition(preferences.targetLanguages == [.english], "A temporary fallback must not be added to saved targets")
+    renderTranslationPreview(controller.view, name: "skip-source-only-saved-target")
+    search.stringValue = ""
+    controller.controlTextDidChange(Notification(name: NSControl.textDidChangeNotification))
+    precondition(session.sourceLanguage == nil && session.language == .english)
+    controller.resetSearch()
+    print("PASS: source targets are skipped before translation, in cycling and previews; single-target fallback preserves Settings")
+}
+
 private struct TranslationLanguageCheckClient: TranslationServing {
     func translate(_ text: String, to language: TranslationLanguage, apiKey: String) async throws -> TranslationResponse {
-        TranslationResponse(text: "\(language.rawValue): \(text)", sourceLanguage: .init(code: "en"))
+        TranslationResponse(text: "\(language.rawValue): \(text)", sourceLanguage: .init(code: "fr"))
     }
 }
 
@@ -151,7 +282,8 @@ private func checkTranslationKeyboardNavigation() {
     let preferences = TranslationPreferences(defaults: defaults)
     preferences.targetLanguages = [.english, .simplifiedChinese, .traditionalChinese]
     preferences.targetLanguage = .english
-    let session = TranslationSession(client: TranslationLanguageCheckClient(), readAPIKey: { "test-key" })
+    let session = TranslationSession(client: TranslationLanguageCheckClient(),
+                                     inferSourceLanguage: { _ in .init(code: "fr") }, readAPIKey: { "test-key" })
     let controller = ApplicationsViewController(translationSession: session, translationPreferences: preferences)
     let window = AppearanceCheckWindow(contentRect: NSRect(x: 0, y: 0, width: 760, height: 560),
                                        styleMask: [.borderless], backing: .buffered, defer: false)

@@ -579,19 +579,21 @@ final class LauncherHeaderFooter {
         }
     }
 
-    func setTranslationLanguageSwitching(_ preferences: TranslationPreferences?, isEnabled: Bool) {
+    func setTranslationLanguageSwitching(_ preferences: TranslationPreferences?, isEnabled: Bool,
+                                         source: InferredSourceLanguage? = nil, selected: TranslationLanguage? = nil) {
         animateActionLayout {
             translationModeButton.isHidden = preferences == nil
             (translationModeButton as? LauncherModeButton)?.update(isSwitchingLanguages: isEnabled)
             translationLanguageControls.isHidden = preferences == nil || !isEnabled
             guard let preferences else { return }
-            translationLanguageLabel.stringValue = preferences.targetLanguage.rawValue
-            let hasAlternatives = preferences.targetLanguages.count > 1
+            translationLanguageLabel.stringValue = (selected ?? preferences.targetLanguage).rawValue
+            let hasAlternatives = preferences.availableTargets(excluding: source).count > 1
             previousTranslationLanguage.isHidden = !hasAlternatives
             nextTranslationLanguage.isHidden = !hasAlternatives
-            let previous = preferences.targetLanguage(shiftedBy: -1).rawValue
-            let next = preferences.targetLanguage(shiftedBy: 1).rawValue
-            let help = "Left switches to \(previous); Right switches to \(next). Up edits the text."
+            let previous = preferences.targetLanguage(shiftedBy: -1, excluding: source, from: selected).rawValue
+            let next = preferences.targetLanguage(shiftedBy: 1, excluding: source, from: selected).rawValue
+            let help = hasAlternatives ? "Left switches to \(previous); Right switches to \(next). Up edits the text."
+                : "Up edits the text."
             translationLanguageControls.setAccessibilityLabel(help)
             translationLanguageControls.toolTip = help
         }

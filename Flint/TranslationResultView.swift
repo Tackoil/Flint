@@ -113,6 +113,7 @@ final class TranslationResultView: NSView {
     private let scroll = NSScrollView()
     private var previousQuery: TranslationQuery?
     private var previousLanguage: TranslationLanguage?
+    private var renderedResponse: TranslationResponse?
     var onExit: (() -> Void)? { didSet { output.onExit = onExit } }
 
     override init(frame frameRect: NSRect) {
@@ -187,7 +188,7 @@ final class TranslationResultView: NSView {
         configureCandidate(session, preferences: preferences)
         configureResult(session)
         if switched {
-            let offset = direction == 0 ? inferredDirection(preferences) : direction
+            let offset = direction == 0 ? inferredDirection(preferences, session: session) : direction
             animateSwitch(direction: offset)
         }
         previousQuery = session.query
@@ -195,7 +196,9 @@ final class TranslationResultView: NSView {
     }
 
     private func configureCandidate(_ session: TranslationSession, preferences: TranslationPreferences) {
-        let next = preferences.targetLanguages.count > 1 ? preferences.targetLanguage(shiftedBy: 1) : nil
+        let source = session.sourceLanguage
+        let next = preferences.availableTargets(excluding: source).count > 1
+            ? preferences.targetLanguage(shiftedBy: 1, excluding: source, from: session.language) : nil
         nextCandidate.configure(next, response: next.flatMap { session.cachedResponse(for: $0) })
         if fullWidth.isActive != (next == nil) {
             NSLayoutConstraint.deactivate([fullWidth, previewWidth])
@@ -207,11 +210,7 @@ final class TranslationResultView: NSView {
         let source = session.sourceLanguage?.displayName ?? "Auto-detect"
         heading.stringValue = "\(source) → \(session.language.rawValue) · DeepSeek"
         heading.toolTip = sourceLanguageHelp(session.sourceLanguage)
-        let answer = session.state.answer ?? ""
-        if output.string != answer {
-            output.string = answer
-            output.scrollToBeginningOfDocument(nil)
-        }
+        configureOutput(session.cachedResponse(for: session.language))
         scroll.isHidden = session.state.answer == nil
         let showsSkeleton = session.state == .ready || session.state == .waiting || session.state == .loading
         skeleton.isHidden = !showsSkeleton
@@ -234,8 +233,38 @@ final class TranslationResultView: NSView {
         }
     }
 
-    private func inferredDirection(_ preferences: TranslationPreferences) -> Int {
-        preferences.targetLanguage(shiftedBy: -1) == previousLanguage ? 1 : -1
+    private func configureOutput(_ response: TranslationResponse?) {
+        guard renderedResponse != response else { return }
+        renderedResponse = response
+        let text = NSMutableAttributedString(string: response?.text ?? "", attributes: [
+            .font: NSFont.systemFont(ofSize: 21), .foregroundColor: NSColor.labelColor
+        ])
+        if let explanation = response?.explanation {
+            appendSection("Meaning", body: explanation, to: text)
+        }
+        if let meanings = response?.alternateMeanings, !meanings.isEmpty {
+            let list = meanings.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n\n")
+            appendSection("Other meanings", body: list, to: text)
+        }
+        output.textStorage?.setAttributedString(text)
+        output.scrollToBeginningOfDocument(nil)
+    }
+
+    private func appendSection(_ title: String, body: String, to text: NSMutableAttributedString) {
+        text.append(NSAttributedString(string: "\n\n\(title)\n", attributes: [
+            .font: NSFont.systemFont(ofSize: 13, weight: .medium), .foregroundColor: NSColor.secondaryLabelColor
+        ]))
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineSpacing = 4
+        text.append(NSAttributedString(string: body, attributes: [
+            .font: NSFont.systemFont(ofSize: 15), .foregroundColor: NSColor.secondaryLabelColor,
+            .paragraphStyle: paragraph
+        ]))
+    }
+
+    private func inferredDirection(_ preferences: TranslationPreferences, session: TranslationSession) -> Int {
+        preferences.targetLanguage(shiftedBy: -1, excluding: session.sourceLanguage,
+                                   from: session.language) == previousLanguage ? 1 : -1
     }
 
     private func clearSwitchAnimations() {
