@@ -41,4 +41,5 @@ final class SettingsWindowController: NSWindowController {
     func createQuickLink() { settingsController.createQuickLink() }
 
     func showTranslationSettings() { settingsController.showTranslationSettings() }
+    func showScriptSettings() { settingsController.showScriptSettings() }
 }

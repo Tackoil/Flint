@@ -56,6 +56,32 @@ Add placeholders to make a search or template link, such as `https://google.com/
 
 Quick Links settings shows a rounded list with an icon, name, and destination for each link. Click a row to open its editing popup. Swipe left on a row and choose **Delete** to remove it. Changes apply to launcher search immediately and persist between launches.
 
+## Script Commands
+
+Run local scripts from launcher search. Open **Settings → Scripts** (or search for **Script Commands**) and choose **Add Folder…**. Flint scans that folder and its subfolders for commands. **Create Script…** saves a working Bash template, adds its folder, and reveals the file in Finder so you can edit it. Removing a folder from Settings keeps its files.
+
+Scripts settings uses the same rounded lists as Translation. **Script Folders** has controls to add a folder, remove the selected folder, or reveal it in Finder. **Commands** shows each script on one row with an **Edit** action that opens its file in TextEdit. Use the refresh button to reload scripts; an **Issues** button appears when a file or folder needs attention. Descriptions and filenames are available in tooltips, without explanatory subtitles.
+
+Commands use [Raycast Script Command metadata](https://github.com/raycast/script-commands), with `@flint` accepted in place of `@raycast`. For example:
+
+```bash
+#!/bin/bash
+# @raycast.schemaVersion 1
+# @raycast.title Say Hello
+# @raycast.mode fullOutput
+# @raycast.argument1 {"type":"text","placeholder":"Name"}
+
+printf 'Hello, %s!\n' "$1"
+```
+
+Search for the command’s title and press **Return**. Commands without arguments run immediately. Commands with arguments show a form; **Return** or **Run Script** starts execution. Up to three consecutive arguments support `text`, `password`, and `dropdown`, including `optional` and `percentEncoded`. Values are passed as individual process arguments, preserving spaces, quotes, and Unicode. Password fields obscure entry; scripts receive the value as an ordinary process argument.
+
+`fullOutput` shows selectable, scrollable plain text from standard output and errors; `compact` shows the last output line on success; `silent` dismisses Flint after successful completion. Failures show the exit code and available output. **Copy Output** copies captured output. **Cancel** stops a running command; **Back** or **Escape** returns to search after it finishes. Dismissing Flint cancels an active command. Runs stop after 60 seconds, and captured output is limited to 1 MB. Output is shown when execution finishes.
+
+`needsConfirmation true` requires **Confirm & Run**, including for commands without arguments. `description`, `packageName`, and `currentDirectoryPath` are read; the working directory defaults to the script’s folder. Flint invokes the shebang interpreter, so scripts do not need executable permission. The process PATH includes `/opt/homebrew/bin` and `/usr/local/bin`. Install any interpreters your scripts require. Scripts run locally with your Mac user’s permissions.
+
+Supported file extensions are `.sh`, `.bash`, `.zsh`, `.py`, `.rb`, `.js`, `.ts`, `.swift`, `.applescript`, `.scpt` (text), and `.pl`. Hidden files, app packages, and `.template.` files are skipped. Settings lists discovered commands and metadata problems. Use **Refresh**, **Command–R**, or reopen Flint to reload changes. Inline scripts and automatic refresh, ANSI styling, and custom script icons are not supported.
+
 ## QR Code Generator
 
 Search for **QR Code Generator** (or **qr**) and press **Tab**, **Return**, or click **Generate QR Code**. Type or paste text or a URL to see a centered QR code instantly. **Return** or **Copy QR Code** copies the high-resolution PNG image and dismisses Flint. The preview and copied image keep a white margin for scanning, including in dark mode.

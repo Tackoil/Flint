@@ -4,11 +4,12 @@ import ServiceManagement
 @MainActor
 final class SettingsViewController: NSViewController {
     private enum Section: Int, CaseIterable {
-        case general, quickLinks, translation
+        case general, quickLinks, scripts, translation
         var title: String {
             switch self {
             case .general: return "General"
             case .quickLinks: return "Quick Links"
+            case .scripts: return "Scripts"
             case .translation: return "Translation"
             }
         }
@@ -16,6 +17,7 @@ final class SettingsViewController: NSViewController {
             switch self {
             case .general: return "gearshape"
             case .quickLinks: return "link"
+            case .scripts: return "terminal"
             case .translation: return "character.bubble"
             }
         }
@@ -37,6 +39,8 @@ final class SettingsViewController: NSViewController {
     private var sectionButtons: [NSButton] = []
     private var selectionSurfaces: [NSView] = []
     private lazy var quickLinkSettings = QuickLinkSettingsView()
+    private let scriptStore: ScriptCommandStore
+    private lazy var scriptSettings = ScriptSettingsView(store: scriptStore)
     private lazy var translationSettings = TranslationSettingsView()
     private var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.0"
@@ -44,11 +48,13 @@ final class SettingsViewController: NSViewController {
 
     init(preferences: LauncherPreferences, onShortcutChange: @escaping (LauncherShortcut) -> Bool,
          onRecordingStateChange: @escaping (Bool) -> Void,
-         onMenuBarVisibilityChange: @escaping (Bool) -> Void) {
+         onMenuBarVisibilityChange: @escaping (Bool) -> Void,
+         scriptStore: ScriptCommandStore = ScriptCommandStore()) {
         self.preferences = preferences
         self.onShortcutChange = onShortcutChange
         self.onRecordingStateChange = onRecordingStateChange
         self.onMenuBarVisibilityChange = onMenuBarVisibilityChange
+        self.scriptStore = scriptStore
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -252,6 +258,7 @@ final class SettingsViewController: NSViewController {
             addContent(quickLinkSettings)
         }
         if section == .translation { addContent(translationSettings) }
+        if section == .scripts { scriptSettings.reload(); addContent(scriptSettings) }
     }
 
     func createQuickLink() {
@@ -265,6 +272,12 @@ final class SettingsViewController: NSViewController {
         _ = view
         cancelRecording()
         showSection(.translation)
+    }
+
+    func showScriptSettings() {
+        _ = view
+        cancelRecording()
+        showSection(.scripts)
     }
 
     private func addGeneralContent() {

@@ -28,6 +28,10 @@ final class ApplicationDelegate: NSObject, NSApplicationDelegate, UNUserNotifica
             self?.showSettings()
             self?.settingsController?.createQuickLink()
         }
+        launcher?.onShowScriptSettings = { [weak self] in
+            self?.showSettings()
+            self?.settingsController?.showScriptSettings()
+        }
         if !wasLaunchedAtLogin { showLauncher() }
     }
 

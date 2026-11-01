@@ -38,6 +38,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     var onShowSettings: (() -> Void)?
     var onCreateQuickLink: (() -> Void)?
     var onShowTranslationSettings: (() -> Void)?
+    var onShowScriptSettings: (() -> Void)?
     var onDisplayModeChange: ((LauncherDisplayMode) -> Void)?
     private let chrome = LauncherHeaderFooter()
     private let launcherContent = NSView(frame: NSRect(x: 0, y: 0, width: 760, height: 560))
@@ -70,6 +71,12 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     private let quickLinkStore: QuickLinkStore
     private let openQuickLinkURL: @MainActor (QuickLink, URL, @escaping (Error?) -> Void) -> Void
     private var quickLinkObserver: NSObjectProtocol?
+    private let scriptStore: ScriptCommandStore
+    private var scriptObserver: NSObjectProtocol?
+    private var scripts: [ScriptCommand] = []
+    private var scriptRefreshID = UUID()
+    private var scriptView: ScriptCommandView?
+    var isPresentingScript: Bool { scriptView != nil }
     private var results: [LauncherItem] = []
     private let actionExecutor = SystemActionExecutor()
     private let errorNotifier = LauncherErrorNotifier()
@@ -79,7 +86,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     private var dialog: LauncherDialogView?
     var isPresentingDialog: Bool { dialog != nil }
     var displayMode: LauncherDisplayMode {
-        if isPresentingDialog { return .results }
+        if isPresentingDialog || isPresentingScript { return .results }
         if isQRCodeMode { return .qrCode }
         if isTranslationMode { return .results }
         if calculation != nil { return .calculator }
@@ -89,16 +96,19 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     init(translationSession: TranslationSession? = nil,
          translationPreferences: TranslationPreferences = TranslationPreferences(),
          quickLinkStore: QuickLinkStore = QuickLinkStore(),
+         scriptStore: ScriptCommandStore = ScriptCommandStore(),
          openQuickLinkURL: @escaping @MainActor (QuickLink, URL, @escaping (Error?) -> Void) -> Void = QuickLinkOpener.open) {
         self.translationSession = translationSession ?? TranslationSession()
         self.translationPreferences = translationPreferences
         self.quickLinkStore = quickLinkStore
+        self.scriptStore = scriptStore
         self.openQuickLinkURL = openQuickLinkURL
         super.init(nibName: nil, bundle: nil)
     }
 
     deinit {
         if let quickLinkObserver { NotificationCenter.default.removeObserver(quickLinkObserver) }
+        if let scriptObserver { NotificationCenter.default.removeObserver(scriptObserver) }
     }
 
     required init?(coder: NSCoder) { fatalError("Use init()") }
@@ -156,6 +166,10 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
                 self?.iconCache.removeAllObjects()
                 self?.applyQuery()
             }
+        }
+        scriptObserver = NotificationCenter.default.addObserver(forName: ScriptCommandStore.didChange,
+                                                               object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.refreshScripts() }
         }
         refreshApplications()
     }
@@ -261,6 +275,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     }
 
     @objc func refreshApplications() {
+        refreshScripts()
         guard !isLoading else { return }
         isLoading = true
         Task { [weak self] in
@@ -275,6 +290,8 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
 
     func resetSearch() {
         _ = view
+        cancelScript()
+        refreshScripts()
         chrome.setQuickLinkQueries(nil)
         resultInputs.removeAll()
         isRoundingEnabled = true
@@ -318,7 +335,8 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
             return
         }
         let items = applications.map(LauncherItem.application) + SystemAction.allCases.map(LauncherItem.action)
-            + quickLinkStore.links.map(LauncherItem.quickLink) + [.translation, .createQuickLink, .qrCode]
+            + quickLinkStore.links.map(LauncherItem.quickLink) + scripts.map(LauncherItem.script)
+            + [.translation, .createQuickLink, .qrCode, .scriptCommands]
         let evaluated = Calculator.evaluate(query, timestampUnit: timestampOutputUnit, colorFormat: colorOutputFormat,
                                             numberBaseFormat: numberBaseOutputFormat)
         if case .numeric(let previous) = calculation, case .numeric(let current) = evaluated,
@@ -421,7 +439,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     private func updateEmptyState(hasQuery: Bool) {
         statusLabel.isHidden = isTranslationMode || isQRCodeMode || calculation != nil || !results.isEmpty || !hasQuery
         statusLabel.stringValue = isLoading ? "Finding your applications…"
-            : "No applications, quick links, or actions found\nTry a different name."
+            : "No applications, links, scripts, or actions found\nTry a different name."
     }
 
     private func updateSelection() {
@@ -462,7 +480,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     }
 
     @objc private func openSelectedApplication() {
-        guard !isOpening, !isPresentingDialog else { return }
+        guard !isOpening, !isPresentingDialog, !isPresentingScript else { return }
         if isQRCodeMode { copyQRCode(to: .general); return }
         if isTranslationMode {
             performTranslationAction()
@@ -490,6 +508,8 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     }
 
     private func activateUtility(_ item: LauncherItem) {
+        if case .script(let command) = item { showScript(command); return }
+        if item == .scriptCommands { onShowScriptSettings?(); return }
         if case .quickLink(let link) = item { openQuickLink(link); return }
         if item == .createQuickLink { onCreateQuickLink?(); return }
         if item == .translation { enterTranslationMode() }
@@ -500,6 +520,44 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         guard !isTranslationMode, !isQRCodeMode, calculation == nil, case .quickLink(let link) = selectedItem,
               !link.arguments.isEmpty else { return nil }
         return link
+    }
+
+    private func refreshScripts() {
+        let id = UUID()
+        scriptRefreshID = id
+        let directories = scriptStore.directories
+        Task { [weak self] in
+            let result = await Task.detached { ScriptDiscovery.scan(directories: directories) }.value
+            guard let self, scriptRefreshID == id else { return }
+            scripts = result.commands
+            if !isPresentingScript { applyQuery() }
+        }
+    }
+
+    private func showScript(_ command: ScriptCommand) {
+        let panel = ScriptCommandView(command: command)
+        scriptView = panel
+        onDisplayModeChange?(.results)
+        launcherContent.isHidden = true
+        launcherContent.setAccessibilityHidden(true)
+        panel.frame = view.bounds
+        panel.autoresizingMask = [.width, .height]
+        view.addSubview(panel)
+        panel.onClose = { [weak self] in self?.cancelScript() }
+        panel.onSilentSuccess = { [weak self] in self?.cancelScript(); self?.onDismiss?() }
+        view.window?.makeFirstResponder(panel)
+        panel.begin()
+    }
+
+    func cancelScript() {
+        guard let scriptView else { return }
+        scriptView.cancel()
+        scriptView.removeFromSuperview()
+        self.scriptView = nil
+        launcherContent.isHidden = false
+        launcherContent.setAccessibilityHidden(false)
+        view.window?.makeFirstResponder(chrome.searchField)
+        applyQuery()
     }
 
     private func openQuickLink(_ link: QuickLink) {
@@ -1083,6 +1141,7 @@ extension ApplicationsViewController: NSTableViewDataSource, NSTableViewDelegate
     func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { ApplicationRow() }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        guard results.indices.contains(row) else { return nil }
         let cell = tableView.makeView(withIdentifier: ApplicationRowContent.identifier, owner: self) as? ApplicationRowContent
             ?? ApplicationRowContent(frame: .zero)
         let item = results[row]
@@ -1105,10 +1164,13 @@ extension ApplicationsViewController: NSTableViewDataSource, NSTableViewDelegate
         if case .action(let action) = item {
             return NSImage(systemSymbolName: action.symbolName, accessibilityDescription: action.name) ?? NSImage()
         }
+        if case .script = item {
+            return NSImage(systemSymbolName: "terminal", accessibilityDescription: item.name) ?? NSImage()
+        }
         if case .quickLink(let link) = item, let url = try? link.resolvedURL(), url.isFileURL {
             return NSWorkspace.shared.icon(forFile: url.path)
         }
-        let symbols: [LauncherItem: String] = [.translation: "character.bubble", .qrCode: "qrcode"]
+        let symbols: [LauncherItem: String] = [.translation: "character.bubble", .qrCode: "qrcode", .scriptCommands: "terminal"]
         let symbol = symbols[item] ?? "link"
         return NSImage(systemSymbolName: symbol, accessibilityDescription: item.name) ?? NSImage()
     }

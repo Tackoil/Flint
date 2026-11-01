@@ -4,6 +4,10 @@ import AppKit
 struct AppearanceChecks {
     @MainActor static func main() {
         print(AppearanceCheckWindows.showsWindows ? "UI checks: visible windows" : "UI checks: offscreen windows; keyboard focus preserved")
+        if ProcessInfo.processInfo.environment["FLINT_SCRIPT_ONLY"] == "1" {
+            checkScriptCommands()
+            return
+        }
         if ProcessInfo.processInfo.environment["FLINT_CALCULATOR_ONLY"] == "1" {
             checkActionGroupResizing()
             checkCalculatorIntegration()
@@ -35,6 +39,7 @@ struct AppearanceChecks {
             checkQuickLinks()
             return
         }
+        checkScriptCommands()
         checkQRCodeIntegration()
         checkQuickLinks()
         let content = NSView(frame: NSRect(x: 0, y: 0, width: 760, height: 560))
