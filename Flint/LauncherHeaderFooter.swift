@@ -371,9 +371,10 @@ final class LauncherHeaderFooter {
         translationExitButton.setAccessibilityLabel("Exit translation mode")
         translationExitButton.toolTip = "Return to search (Escape)"
         let actions = Appearance.actionGroup(content: Appearance.stack(
-            [openButton, useResultButton, resultBackButton, translationExitButton, qrCodeExitButton, queryNavigation, quickLinkBackButton, navigation, precisionControls, roundingModeButton, timestampUnitHint,
+            [queryNavigation, quickLinkBackButton, navigation, precisionControls, roundingModeButton, timestampUnitHint,
              colorFormatControls, colorModeButton, numberBaseControls, numberBaseModeButton,
-             translationLanguageControls, translationModeButton], spacing: 16))
+             translationLanguageControls, translationModeButton,
+             useResultButton, resultBackButton, translationExitButton, qrCodeExitButton, openButton], spacing: 16))
         actions.wantsLayer = true
         actionGroup = actions as? ActionGroupView
         settingsButton.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: "Settings")?
