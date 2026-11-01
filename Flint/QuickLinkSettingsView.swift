@@ -1,10 +1,11 @@
 import AppKit
 
 @MainActor
-final class QuickLinkSettingsView: NSStackView, NSTableViewDataSource, NSTableViewDelegate {
+final class QuickLinkSettingsView: NSStackView, NSTableViewDataSource, NSTableViewDelegate, SettingsKeyboardSection {
     private let store: QuickLinkStore
     private let table = NSTableView()
-    private let removeButton = NSButton()
+    private let removeButton = SettingsButton()
+    private let addButton = SettingsButton()
     private let emptyLabel = Appearance.label("No Quick Links", size: 13)
     private var links: [QuickLink] = []
     private var editor: QuickLinkEditorController?
@@ -89,20 +90,14 @@ final class QuickLinkSettingsView: NSStackView, NSTableViewDataSource, NSTableVi
     }
 
     private func makeToolbar() -> NSView {
-        let add = NSButton(title: "Add Quick Link…", target: self, action: #selector(addLink))
-        add.image = NSImage(systemSymbolName: "plus", accessibilityDescription: nil)
-        add.imagePosition = .imageLeading
-        add.isBordered = false
-        add.font = .systemFont(ofSize: 12)
-        add.setAccessibilityLabel("Add Quick Link…")
-        removeButton.image = NSImage(systemSymbolName: "minus", accessibilityDescription: "Remove Quick Link")
-        removeButton.imagePosition = .imageOnly
-        removeButton.isBordered = false
+        let add = addButton
+        Appearance.configureSettingsButton(add, symbol: "plus", title: "Add Quick Link…")
+        add.target = self
+        add.action = #selector(addLink)
+        Appearance.configureSettingsButton(removeButton, symbol: "minus", title: "Remove Quick Link")
         removeButton.toolTip = "Remove the selected quick link."
-        removeButton.setAccessibilityLabel("Remove Quick Link")
         removeButton.target = self
         removeButton.action = #selector(removeSelectedLink)
-        removeButton.widthAnchor.constraint(equalToConstant: 26).isActive = true
         let divider = AppearanceSurfaceView(fillColor: .separatorColor)
         divider.widthAnchor.constraint(equalToConstant: 0.5).isActive = true
         divider.heightAnchor.constraint(equalToConstant: 16).isActive = true
@@ -138,6 +133,24 @@ final class QuickLinkSettingsView: NSStackView, NSTableViewDataSource, NSTableVi
     private func updateSelection() { removeButton.isEnabled = selectedLink != nil }
     func tableViewSelectionDidChange(_ notification: Notification) { updateSelection() }
 
+    var keyboardControls: [NSView] { [table, addButton, removeButton] }
+    var keyboardNavigationControls: [NSView] { [table] }
+
+    var keyboardActions: [SettingsAction] {
+        [SettingsAction(button: addButton, title: "Add Quick Link…", key: "n"),
+         SettingsAction("Edit Quick Link…", key: "e", isEnabled: selectedLink != nil) { [weak self] in
+             guard let self, let selectedLink else { return }
+             showEditor(link: selectedLink)
+         },
+         SettingsAction(button: removeButton, title: "Remove Quick Link", key: "\u{7f}")]
+    }
+
+    func keyboardPrimaryAction(for control: NSView?) -> SettingsAction? {
+        guard control === table else { return nil }
+        let edit = keyboardActions[1]
+        return SettingsAction("Edit", isEnabled: edit.isEnabled, perform: edit.perform)
+    }
+
     private func showEditor(link: QuickLink?) {
         guard editor == nil, let window else { return }
         let editor = QuickLinkEditorController(link: link, store: store)
@@ -145,6 +158,8 @@ final class QuickLinkSettingsView: NSStackView, NSTableViewDataSource, NSTableVi
         window.beginSheet(editor.window!) { [weak self] _ in
             self?.editor = nil
             self?.reload()
+            guard let self else { return }
+            window.makeFirstResponder(table)
         }
     }
 
@@ -160,16 +175,15 @@ final class QuickLinkSettingsView: NSStackView, NSTableViewDataSource, NSTableVi
 
     func numberOfRows(in tableView: NSTableView) -> Int { links.count }
 
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { ApplicationRow() }
+
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let link = links[row]
-        let edit = NSButton(title: "Edit", target: self, action: #selector(editLink(_:)))
-        edit.image = NSImage(systemSymbolName: "pencil", accessibilityDescription: nil)
-        edit.imagePosition = .imageLeading
-        edit.isBordered = false
-        edit.font = .systemFont(ofSize: 12)
+        let edit = SettingsButton()
+        Appearance.configureSettingsButton(edit, symbol: "pencil", title: "Edit \(link.name)")
+        edit.target = self
+        edit.action = #selector(editLink(_:))
         edit.tag = row
-        edit.setAccessibilityLabel("Edit \(link.name)")
-        edit.toolTip = "Edit \(link.name)"
         return QuickLinkSettingsCell(link: link, edit: edit)
     }
 }
@@ -226,10 +240,11 @@ final class QuickLinkEditorController: NSWindowController {
     private let id: UUID
     private let nameField = NSTextField()
     private let linkField = NSTextField()
-    private let applicationButton = NSButton(title: "Default Application", target: nil, action: nil)
-    private let resetButton = NSButton()
+    private let applicationButton = SettingsButton(title: "Default Application", target: nil, action: nil)
+    private let resetButton = SettingsButton()
     private let errorLabel = Appearance.label("", size: 12, color: .systemRed)
     private let form = NSStackView()
+    private let keyboardView = SettingsKeyboardView(footerBottomInset: 24)
     private var applicationURL: URL?
 
     init(link: QuickLink?, store: QuickLinkStore) {
@@ -241,12 +256,13 @@ final class QuickLinkEditorController: NSWindowController {
         super.init(window: panel)
         panel.title = link == nil ? "Create Quick Link" : "Edit Quick Link"
         panel.isReleasedWhenClosed = false
-        panel.contentView = AppearanceSurfaceView(fillColor: .windowBackgroundColor)
+        panel.contentView = keyboardView
         nameField.stringValue = link?.name ?? ""
         linkField.stringValue = link?.link ?? ""
         configureForm(in: panel)
-        panel.initialFirstResponder = nameField
+        panel.initialFirstResponder = keyboardView
         updateApplicationTitle()
+        keyboardView.focusFirstControl()
     }
 
     required init?(coder: NSCoder) { fatalError("Use init(link:store:)") }
@@ -263,16 +279,9 @@ final class QuickLinkEditorController: NSWindowController {
         errorLabel.lineBreakMode = .byWordWrapping
         errorLabel.preferredMaxLayoutWidth = 432
         errorLabel.isHidden = true
-        let cancel = NSButton(title: "Cancel", target: self, action: #selector(cancel))
-        cancel.keyEquivalent = "\u{1b}"
-        cancel.bezelStyle = .rounded
-        let save = NSButton(title: "Save Quick Link", target: self, action: #selector(save))
-        save.bezelStyle = .rounded
-        save.keyEquivalent = "\r"
-        save.keyEquivalentModifierMask = .command
-        let buttons = Appearance.stack([Appearance.spacer(), cancel, save], spacing: 8)
+        configureKeyboard()
         for child in [fieldRow("Name", field: nameField), fieldRow("Link", field: linkField),
-                      fieldRow("Open With", field: application), errorLabel, buttons] {
+                      fieldRow("Open With", field: application), errorLabel] {
             form.addArrangedSubview(child)
         }
         form.orientation = .vertical
@@ -286,10 +295,35 @@ final class QuickLinkEditorController: NSWindowController {
             form.leadingAnchor.constraint(equalTo: panel.contentView!.leadingAnchor, constant: 24),
             form.trailingAnchor.constraint(equalTo: panel.contentView!.trailingAnchor, constant: -24),
             form.topAnchor.constraint(equalTo: panel.contentView!.topAnchor, constant: 24),
-            form.bottomAnchor.constraint(lessThanOrEqualTo: panel.contentView!.bottomAnchor, constant: -24)
+            form.bottomAnchor.constraint(lessThanOrEqualTo: keyboardView.footer.topAnchor, constant: -16)
         ])
         nameField.nextKeyView = linkField
         linkField.nextKeyView = applicationButton
+    }
+
+    private func configureKeyboard() {
+        let save = SettingsAction("Save Quick Link", key: "\r") { [weak self] in self?.save() }
+        let cancel = SettingsAction("Cancel", key: "\u{1b}", modifiers: []) { [weak self] in self?.cancel() }
+        keyboardView.editorActions = [cancel, save]
+        keyboardView.controls = { [weak self] in
+            guard let self else { return [] }
+            return [nameField, linkField, applicationButton, resetButton]
+        }
+        keyboardView.navigationControls = { [weak self] in
+            guard let self else { return [] }
+            return [nameField, linkField, applicationButton]
+        }
+        keyboardView.actions = { [weak self] in
+            guard let self else { return [] }
+            return [save, cancel,
+                    SettingsAction(button: applicationButton, title: "Choose Application…", key: "o"),
+                    SettingsAction(button: resetButton, title: "Reset Open With", key: "r", modifiers: [.command, .option])]
+        }
+        keyboardView.primaryAction = { [weak self] control in
+            guard let self else { return nil }
+            return control === nameField || control === linkField ? save : nil
+        }
+        keyboardView.onCancel = cancel.perform
     }
 
     private func makeApplicationControl() -> NSView {
@@ -304,18 +338,10 @@ final class QuickLinkEditorController: NSWindowController {
         applicationButton.setAccessibilityLabel("Open With")
         applicationButton.target = self
         applicationButton.action = #selector(chooseApplication)
-        resetButton.title = ""
-        resetButton.image = NSImage(systemSymbolName: "arrow.counterclockwise", accessibilityDescription: nil)
-        resetButton.imagePosition = .imageOnly
-        resetButton.bezelStyle = .rounded
-        resetButton.showsBorderOnlyWhileMouseInside = true
-        resetButton.controlSize = .small
+        Appearance.configureSettingsButton(resetButton, symbol: "arrow.counterclockwise", title: "Reset Open With")
         resetButton.toolTip = "Reset to Default Application"
-        resetButton.setAccessibilityLabel("Reset Open With")
         resetButton.target = self
         resetButton.action = #selector(resetApplication)
-        resetButton.widthAnchor.constraint(equalToConstant: 24).isActive = true
-        resetButton.heightAnchor.constraint(equalToConstant: 24).isActive = true
         let control = Appearance.stack([applicationButton, resetButton], spacing: 8)
         control.distribution = .fill
         return control
@@ -324,7 +350,7 @@ final class QuickLinkEditorController: NSWindowController {
     private func fitContent() {
         guard let window, let content = window.contentView else { return }
         content.layoutSubtreeIfNeeded()
-        window.setContentSize(NSSize(width: 480, height: ceil(form.fittingSize.height) + 48))
+        window.setContentSize(NSSize(width: 480, height: ceil(form.fittingSize.height) + 100))
         content.layoutSubtreeIfNeeded()
     }
 
@@ -332,6 +358,7 @@ final class QuickLinkEditorController: NSWindowController {
         let label = Appearance.label(title, size: 13, color: .labelColor)
         label.widthAnchor.constraint(equalToConstant: 72).isActive = true
         let row = Appearance.stack([label, field], spacing: 12)
+        row.identifier = .init("settingsRow")
         field.trailingAnchor.constraint(equalTo: row.trailingAnchor).isActive = true
         return row
     }

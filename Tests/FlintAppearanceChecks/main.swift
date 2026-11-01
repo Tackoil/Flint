@@ -4,6 +4,10 @@ import AppKit
 struct AppearanceChecks {
     @MainActor static func main() {
         print(AppearanceCheckWindows.showsWindows ? "UI checks: visible windows" : "UI checks: offscreen windows; keyboard focus preserved")
+        if ProcessInfo.processInfo.environment["FLINT_SETTINGS_ONLY"] == "1" {
+            checkSettingsKeyboard()
+            return
+        }
         if ProcessInfo.processInfo.environment["FLINT_SCRIPT_ONLY"] == "1" {
             checkScriptCommands()
             return
@@ -39,6 +43,7 @@ struct AppearanceChecks {
             checkQuickLinks()
             return
         }
+        checkSettingsKeyboard()
         checkScriptCommands()
         checkQRCodeIntegration()
         checkQuickLinks()

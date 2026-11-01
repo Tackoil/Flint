@@ -374,7 +374,7 @@ private func checkQuickLinkEditor(_ store: QuickLinkStore) {
     let controls = quickLinkViews(content)
     let name = controls.compactMap { $0 as? NSTextField }.first { $0.accessibilityLabel() == "Quick link name" }!
     let destination = controls.compactMap { $0 as? NSTextField }.first { $0.accessibilityLabel() == "Quick link destination" }!
-    let save = controls.compactMap { $0 as? NSButton }.first { $0.title == "Save Quick Link" }!
+    let save = controls.compactMap { $0 as? NSButton }.first { $0.accessibilityLabel() == "Save Quick Link" }!
     let count = store.links.count
     name.stringValue = "Search Google"
     destination.stringValue = "https://google.com/search?q={query}"
@@ -395,7 +395,7 @@ private func checkQuickLinkEditor(_ store: QuickLinkStore) {
     let editName = editControls.compactMap { $0 as? NSTextField }.first { $0.accessibilityLabel() == "Quick link name" }!
     precondition(editName.stringValue == saved.name)
     editName.stringValue = "Web Search"
-    editControls.compactMap { $0 as? NSButton }.first { $0.title == "Save Quick Link" }!.performClick(nil)
+    editControls.compactMap { $0 as? NSButton }.first { $0.accessibilityLabel() == "Save Quick Link" }!.performClick(nil)
     precondition(store.links.last!.id == saved.id && store.links.last!.name == "Web Search")
     checkQuickLinkApplicationControl(store, link: store.links.last!)
     editor.window?.orderOut(nil)
@@ -409,7 +409,7 @@ private func checkQuickLinkEditorLayout(_ content: NSView) {
     let buttons = controls.compactMap { $0 as? NSButton }
     let application = buttons.first { $0.accessibilityLabel() == "Open With" }!
     let reset = buttons.first { $0.accessibilityLabel() == "Reset Open With" }!
-    let save = buttons.first { $0.title == "Save Quick Link" }!
+    let save = buttons.first { $0.accessibilityLabel() == "Save Quick Link" }!
     let fieldFrame = content.convert(destination.bounds, from: destination)
     let applicationFrame = content.convert(application.bounds, from: application)
     let resetFrame = content.convert(reset.bounds, from: reset)
@@ -419,8 +419,8 @@ private func checkQuickLinkEditorLayout(_ content: NSView) {
                  "Open With must fill the field column up to its reset icon")
     precondition(reset.title.isEmpty && reset.image != nil && application.image != nil)
     precondition(content.bounds.height < 300, "The editor must size to its form instead of leaving unused space")
-    precondition(abs(content.convert(save.bounds, from: save).minY - 24) < 2,
-                 "The editor must retain only its bottom content padding")
+    precondition((24...30).contains(content.convert(save.bounds, from: save).minY),
+                 "The editor action group must retain its bottom content padding")
 }
 
 @MainActor
@@ -430,7 +430,7 @@ private func checkQuickLinkEditorValidation(_ store: QuickLinkStore) {
     defer { editor.window?.orderOut(nil) }
     let height = content.bounds.height
     let count = store.links.count
-    let save = quickLinkViews(content).compactMap { $0 as? NSButton }.first { $0.title == "Save Quick Link" }!
+    let save = quickLinkViews(content).compactMap { $0 as? NSButton }.first { $0.accessibilityLabel() == "Save Quick Link" }!
     save.performClick(nil)
     precondition(store.links.count == count)
     precondition(content.bounds.height > height, "Validation must grow the editor to fit the error")
@@ -449,7 +449,7 @@ private func checkQuickLinkApplicationControl(_ store: QuickLinkStore, link: Qui
     let buttons = quickLinkViews(content).compactMap { $0 as? NSButton }
     let application = buttons.first { $0.accessibilityLabel() == "Open With" }!
     let reset = buttons.first { $0.accessibilityLabel() == "Reset Open With" }!
-    let save = buttons.first { $0.title == "Save Quick Link" }!
+    let save = buttons.first { $0.accessibilityLabel() == "Save Quick Link" }!
     precondition(application.title == applicationURL.deletingPathExtension().lastPathComponent)
     precondition(application.image?.isTemplate == false && application.image?.size == NSSize(width: 16, height: 16))
     precondition(reset.isEnabled)
@@ -515,6 +515,10 @@ private func checkQuickLinkSettings(_ store: QuickLinkStore) {
     let controller = SettingsViewController(preferences: LauncherPreferences(), onShortcutChange: { _ in true },
                                             onRecordingStateChange: { _ in }, onMenuBarVisibilityChange: { _ in })
     let sidebarWindow = quickLinkWindow(controller: controller, width: 720)
+    for appearance: NSAppearance.Name in [.aqua, .darkAqua] {
+        sidebarWindow.appearance = NSAppearance(named: appearance)
+        renderQuickLinkPreview(controller.view, name: "settings-general-\(appearance.rawValue)")
+    }
     quickLinkViews(controller.view).compactMap { $0 as? NSButton }.first { $0.accessibilityLabel() == "Quick Links" }!.performClick(nil)
     controller.view.layoutSubtreeIfNeeded()
     let library = quickLinkViews(controller.view).compactMap { $0 as? QuickLinkSettingsView }.first!
@@ -533,7 +537,7 @@ private func checkQuickLinkSettingsEditing(_ settings: QuickLinkSettingsView, ta
     let original = store.links[0]
     table.selectRowIndexes(IndexSet(integer: 1), byExtendingSelection: false)
     let originalCell = table.view(atColumn: 0, row: 0, makeIfNecessary: true)!
-    quickLinkViews(originalCell).compactMap { $0 as? NSButton }.first { $0.title == "Edit" }!.performClick(nil)
+    quickLinkViews(originalCell).compactMap { $0 as? NSButton }.first { $0.action == NSSelectorFromString("editLink:") }!.performClick(nil)
     let sheet = window.attachedSheet!
     precondition(!window.isKeyWindow && !sheet.isKeyWindow,
                  "Editor popups must stay offscreen without taking keyboard focus")
@@ -541,16 +545,16 @@ private func checkQuickLinkSettingsEditing(_ settings: QuickLinkSettingsView, ta
     let name = controls.compactMap { $0 as? NSTextField }.first { $0.accessibilityLabel() == "Quick link name" }!
     precondition(name.stringValue == original.name)
     name.stringValue = "Renamed from Settings"
-    controls.compactMap { $0 as? NSButton }.first { $0.title == "Save Quick Link" }!.performClick(nil)
+    controls.compactMap { $0 as? NSButton }.first { $0.accessibilityLabel() == "Save Quick Link" }!.performClick(nil)
     RunLoop.current.run(until: Date().addingTimeInterval(0.3))
     precondition(window.attachedSheet == nil)
     precondition(store.links[0].id == original.id && store.links[0].name == "Renamed from Settings")
     let cell = table.view(atColumn: 0, row: 0, makeIfNecessary: true) as! NSTableCellView
     precondition(cell.textField?.stringValue == "Renamed from Settings", "Saving must refresh the row immediately")
-    quickLinkViews(cell).compactMap { $0 as? NSButton }.first { $0.title == "Edit" }!.performClick(nil)
+    quickLinkViews(cell).compactMap { $0 as? NSButton }.first { $0.action == NSSelectorFromString("editLink:") }!.performClick(nil)
     let cancelControls = quickLinkViews(window.attachedSheet!.contentView!)
     cancelControls.compactMap { $0 as? NSTextField }.first { $0.accessibilityLabel() == "Quick link name" }!.stringValue = "Discard me"
-    cancelControls.compactMap { $0 as? NSButton }.first { $0.title == "Cancel" }!.performClick(nil)
+    cancelControls.compactMap { $0 as? NSButton }.first { $0.accessibilityLabel() == "Cancel" }!.performClick(nil)
     RunLoop.current.run(until: Date().addingTimeInterval(0.3))
     precondition(store.links[0].name == "Renamed from Settings")
     precondition(!window.isKeyWindow, "Editing checks must preserve the user's keyboard focus")
@@ -573,12 +577,12 @@ private func checkQuickLinkSettingsRemoval(_ settings: QuickLinkSettingsView, ta
     precondition(table.numberOfRows == count - 1)
     table.deselectAll(nil)
     precondition(!remove.isEnabled)
-    buttons.first { $0.title == "Add Quick Link…" }!.performClick(nil)
+    buttons.first { $0.accessibilityLabel() == "Add Quick Link…" }!.performClick(nil)
     let sheet = window.attachedSheet!
     let controls = quickLinkViews(sheet.contentView!)
     let name = controls.compactMap { $0 as? NSTextField }.first { $0.accessibilityLabel() == "Quick link name" }!
     precondition(name.stringValue.isEmpty)
-    controls.compactMap { $0 as? NSButton }.first { $0.title == "Cancel" }!.performClick(nil)
+    controls.compactMap { $0 as? NSButton }.first { $0.accessibilityLabel() == "Cancel" }!.performClick(nil)
     RunLoop.current.run(until: Date().addingTimeInterval(0.3))
     precondition(store.links.count == count - 1 && window.attachedSheet == nil)
     print("PASS: the integrated toolbar adds quick links, removes the selected link, and disables removal without selection")

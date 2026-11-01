@@ -77,7 +77,8 @@ private func checkScriptSettings(store: ScriptCommandStore, directory: URL, wind
     let commands = tables.first { $0.accessibilityLabel() == "Script Commands" }!
     precondition(folders.numberOfRows == 1 && commands.numberOfRows == 2)
     let remove = scriptDescendants(settings).compactMap { $0 as? NSButton }.first { $0.accessibilityLabel() == "Remove Script Folder" }!
-    precondition(!remove.isEnabled)
+    precondition(remove.isEnabled && folders.selectedRow == 0,
+                 "Keyboard focus must select the first script folder on opening Settings")
     folders.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
     precondition(remove.isEnabled)
     renderScriptPreview(controller.view, window: window, name: "script-settings")
@@ -87,7 +88,7 @@ private func checkScriptSettings(store: ScriptCommandStore, directory: URL, wind
     try! "not a script command".write(to: invalid, atomically: true, encoding: .utf8)
     settings.reload()
     waitForScriptUI { !settings.isRefreshing && settings.discovery.issues.count == 1 }
-    let issues = scriptDescendants(settings).compactMap { $0 as? NSButton }.first { $0.title == "1 Issue…" }!
+    let issues = scriptDescendants(settings).compactMap { $0 as? NSButton }.first { $0.accessibilityLabel() == "1 Issue…" }!
     precondition(!issues.isHidden && folders.selectedRow == 0)
     renderScriptPreview(controller.view, window: window, name: "script-settings-issues")
     remove.performClick(nil)

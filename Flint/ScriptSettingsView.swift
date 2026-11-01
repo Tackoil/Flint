@@ -2,13 +2,16 @@ import AppKit
 import UniformTypeIdentifiers
 
 @MainActor
-final class ScriptSettingsView: NSStackView, NSTableViewDataSource, NSTableViewDelegate {
+final class ScriptSettingsView: NSStackView, NSTableViewDataSource, NSTableViewDelegate, SettingsKeyboardSection {
     private let store: ScriptCommandStore
     private let folders = NSTableView()
     private let commands = NSTableView()
-    private let removeButton = NSButton()
-    private let revealButton = NSButton()
-    private let issuesButton = NSButton()
+    private let removeButton = SettingsButton()
+    private let revealButton = SettingsButton()
+    private let issuesButton = SettingsButton()
+    private let addButton = SettingsButton()
+    private let createButton = SettingsButton()
+    private let refreshButton = SettingsButton()
     private let folderEmpty = Appearance.label("No Script Folders", size: 13)
     private let commandEmpty = Appearance.label("No Scripts", size: 13)
     private let progress = NSProgressIndicator()
@@ -50,7 +53,8 @@ final class ScriptSettingsView: NSStackView, NSTableViewDataSource, NSTableViewD
     }
 
     private func makeFolderList() -> NSView {
-        let add = button("Add Folder…", symbol: "plus", action: #selector(addFolder))
+        let add = addButton
+        configureIcon(add, symbol: "plus", title: "Add Folder…", action: #selector(addFolder))
         configureIcon(removeButton, symbol: "minus", title: "Remove Script Folder", action: #selector(removeFolder))
         removeButton.toolTip = "Remove the selected folder from Flint. Its files are kept."
         configureIcon(revealButton, symbol: "folder", title: "Show Folder in Finder", action: #selector(revealFolder))
@@ -60,15 +64,11 @@ final class ScriptSettingsView: NSStackView, NSTableViewDataSource, NSTableViewD
     }
 
     private func makeCommandList() -> NSView {
-        let create = button("Create Script…", symbol: "plus", action: #selector(createScript))
-        let refresh = NSButton()
+        let create = createButton
+        configureIcon(create, symbol: "plus", title: "Create Script…", action: #selector(createScript))
+        let refresh = refreshButton
         configureIcon(refresh, symbol: "arrow.clockwise", title: "Refresh Scripts", action: #selector(refreshScripts))
-        issuesButton.bezelStyle = .rounded
-        issuesButton.controlSize = .small
-        issuesButton.image = NSImage(systemSymbolName: "exclamationmark.triangle", accessibilityDescription: nil)
-        issuesButton.imagePosition = .imageLeading
-        issuesButton.target = self
-        issuesButton.action = #selector(showIssues)
+        configureIcon(issuesButton, symbol: "exclamationmark.triangle", title: "Script Issues", action: #selector(showIssues))
         issuesButton.isHidden = true
         progress.style = .spinning
         progress.controlSize = .small
@@ -137,24 +137,15 @@ final class ScriptSettingsView: NSStackView, NSTableViewDataSource, NSTableViewD
     }
 
     private func button(_ title: String, symbol: String, action: Selector) -> NSButton {
-        let button = NSButton(title: title, target: self, action: action)
-        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
-        button.imagePosition = .imageLeading
-        button.isBordered = false
-        button.font = .systemFont(ofSize: 12)
-        button.setAccessibilityLabel(title)
+        let button = SettingsButton()
+        configureIcon(button, symbol: symbol, title: title, action: action)
         return button
     }
 
     private func configureIcon(_ button: NSButton, symbol: String, title: String, action: Selector) {
-        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
-        button.imagePosition = .imageOnly
-        button.isBordered = false
-        button.toolTip = title
-        button.setAccessibilityLabel(title)
+        Appearance.configureSettingsButton(button, symbol: symbol, title: title)
         button.target = self
         button.action = action
-        button.widthAnchor.constraint(equalToConstant: 26).isActive = true
     }
 
     func reload() {
@@ -171,6 +162,39 @@ final class ScriptSettingsView: NSStackView, NSTableViewDataSource, NSTableViewD
 
     private var selectedDirectory: URL? {
         directories.indices.contains(folders.selectedRow) ? directories[folders.selectedRow] : nil
+    }
+
+    var keyboardControls: [NSView] { [folders, addButton, removeButton, revealButton, commands, createButton, refreshButton, issuesButton] }
+    var keyboardNavigationControls: [NSView] { [folders, commands] }
+
+    var keyboardActions: [SettingsAction] {
+        [SettingsAction(button: addButton, title: "Add Folder…", key: "n"),
+         SettingsAction(button: createButton, title: "Create Script…", key: "n", modifiers: [.command, .shift]),
+         SettingsAction("Edit Script", key: "e", isEnabled: discovery.commands.indices.contains(commands.selectedRow)) { [weak self] in
+             self?.editSelectedScript()
+         },
+         SettingsAction(button: removeButton, title: "Remove Script Folder", key: "\u{7f}"),
+         SettingsAction(button: revealButton, title: "Show Folder in Finder", key: "o"),
+         SettingsAction(button: refreshButton, title: "Refresh Scripts", key: "r"),
+         SettingsAction(button: issuesButton, title: issuesButton.accessibilityLabel() ?? "Script Issues", key: "i")]
+    }
+
+    func keyboardPrimaryAction(for control: NSView?) -> SettingsAction? {
+        if control === folders {
+            let action = keyboardActions[4]
+            return SettingsAction("Open", isEnabled: action.isEnabled, perform: action.perform)
+        }
+        if control === commands {
+            let action = keyboardActions[2]
+            return SettingsAction("Edit", isEnabled: action.isEnabled, perform: action.perform)
+        }
+        return nil
+    }
+
+    private func editSelectedScript() {
+        let sender = NSButton()
+        sender.tag = commands.selectedRow
+        editScript(sender)
     }
 
     private func updateFolderControls() {
@@ -194,7 +218,9 @@ final class ScriptSettingsView: NSStackView, NSTableViewDataSource, NSTableViewD
             progress.stopAnimation(nil)
             commands.reloadData()
             commandEmpty.isHidden = !result.commands.isEmpty
-            issuesButton.title = result.issues.count == 1 ? "1 Issue…" : "\(result.issues.count) Issues…"
+            let issueTitle = result.issues.count == 1 ? "1 Issue…" : "\(result.issues.count) Issues…"
+            issuesButton.toolTip = issueTitle
+            issuesButton.setAccessibilityLabel(issueTitle)
             issuesButton.isHidden = result.issues.isEmpty
         }
     }
@@ -202,6 +228,8 @@ final class ScriptSettingsView: NSStackView, NSTableViewDataSource, NSTableViewD
     func numberOfRows(in tableView: NSTableView) -> Int {
         tableView === folders ? directories.count : discovery.commands.count
     }
+
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { ApplicationRow() }
 
     func tableViewSelectionDidChange(_ notification: Notification) { updateFolderControls() }
 

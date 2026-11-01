@@ -1,19 +1,19 @@
 import AppKit
 
 @MainActor
-final class TranslationSettingsView: NSStackView, NSTableViewDataSource, NSTableViewDelegate {
+final class TranslationSettingsView: NSStackView, NSTableViewDataSource, NSTableViewDelegate, SettingsKeyboardSection {
     private let preferences: TranslationPreferences
     private let hasAPIKey: () throws -> Bool
     private let saveAPIKey: (String) throws -> Void
     private let deleteAPIKey: () throws -> Void
     private let keyField = NSSecureTextField()
     private let languages = NSTableView()
-    private let addLanguageButton = NSButton()
-    private let removeLanguageButton = NSButton()
+    private let addLanguageButton = SettingsButton()
+    private let removeLanguageButton = SettingsButton()
     private var isReloadingLanguages = false
     private let errorLabel = Appearance.label("", size: 12, color: .systemRed)
-    private let saveButton = NSButton(title: "Save Key", target: nil, action: nil)
-    private let removeButton = NSButton()
+    private let saveButton = SettingsButton()
+    private let removeButton = SettingsButton()
     private let savedKey = Appearance.label("••••••••••••", size: 13, color: .labelColor)
     private let nativeNames: [TranslationLanguage: String] = [
         .simplifiedChinese: "简体中文", .traditionalChinese: "繁體中文", .english: "English",
@@ -58,20 +58,13 @@ final class TranslationSettingsView: NSStackView, NSTableViewDataSource, NSTable
         savedKey.alignment = .right
         savedKey.setAccessibilityLabel("DeepSeek API key saved")
         savedKey.isHidden = true
-        saveButton.bezelStyle = .rounded
+        Appearance.configureSettingsButton(saveButton, symbol: "checkmark", title: "Save Key")
         saveButton.target = self
         saveButton.action = #selector(saveKey)
-        removeButton.title = ""
-        removeButton.image = NSImage(systemSymbolName: "trash", accessibilityDescription: "Remove API key")
-        removeButton.imagePosition = .imageOnly
-        removeButton.isBordered = false
-        removeButton.toolTip = "Remove API key"
-        removeButton.setAccessibilityLabel("Remove API key")
+        Appearance.configureSettingsButton(removeButton, symbol: "trash", title: "Remove API key")
         removeButton.target = self
         removeButton.action = #selector(removeKey)
         removeButton.isHidden = true
-        removeButton.widthAnchor.constraint(equalToConstant: 24).isActive = true
-        removeButton.heightAnchor.constraint(equalToConstant: 24).isActive = true
     }
 
     private func makeSurface() -> NSView {
@@ -86,6 +79,7 @@ final class TranslationSettingsView: NSStackView, NSTableViewDataSource, NSTable
 
     private func makeKeyRow() -> NSView {
         let surface = makeSurface()
+        surface.identifier = .init("settingsRow")
         let title = Appearance.label("DeepSeek API Key", size: 13, color: .labelColor)
         title.setContentCompressionResistancePriority(.required, for: .horizontal)
         let controls = Appearance.stack([title, Appearance.spacer(), keyField, savedKey, saveButton, removeButton], spacing: 8)
@@ -148,14 +142,9 @@ final class TranslationSettingsView: NSStackView, NSTableViewDataSource, NSTable
             (addLanguageButton, "plus", "Add language", #selector(showLanguageMenu)),
             (removeLanguageButton, "minus", "Remove language", #selector(removeLanguage))
         ] {
-            button.title = ""
-            button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
-            button.isBordered = false
-            button.setAccessibilityLabel(title)
-            button.toolTip = title
+            Appearance.configureSettingsButton(button, symbol: symbol, title: title)
             button.target = self
             button.action = action
-            button.widthAnchor.constraint(equalToConstant: 24).isActive = true
         }
         updateLanguageControls()
         let divider = AppearanceSurfaceView(fillColor: .separatorColor)
@@ -176,6 +165,25 @@ final class TranslationSettingsView: NSStackView, NSTableViewDataSource, NSTable
         addLanguageButton.menu = menu
         addLanguageButton.isEnabled = !menu.items.isEmpty
         removeLanguageButton.isEnabled = preferences.targetLanguages.count > 1 && languages.selectedRow >= 0
+    }
+
+    var keyboardControls: [NSView] { [languages, addLanguageButton, removeLanguageButton, keyField, saveButton, removeButton] }
+    var keyboardNavigationControls: [NSView] { [languages, keyField, removeButton] }
+
+    var keyboardActions: [SettingsAction] {
+        [SettingsAction(button: addLanguageButton, title: "Add Language…", key: "n"),
+         SettingsAction(button: removeLanguageButton, title: "Remove Language", key: "\u{7f}"),
+         SettingsAction(button: saveButton, title: "Save Key", key: "s"),
+         SettingsAction(button: removeButton, title: "Remove API Key", key: "\u{7f}", modifiers: [.command, .shift])]
+    }
+
+    func keyboardPrimaryAction(for control: NSView?) -> SettingsAction? {
+        if control === languages {
+            let action = keyboardActions[0]
+            return SettingsAction("Add", isEnabled: action.isEnabled, perform: action.perform)
+        }
+        if control === keyField { return keyboardActions[2] }
+        return nil
     }
 
     @objc private func showLanguageMenu() {
@@ -231,6 +239,8 @@ final class TranslationSettingsView: NSStackView, NSTableViewDataSource, NSTable
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int { preferences.targetLanguages.count }
+
+    func tableView(_ tableView: NSTableView, rowViewForRow row: Int) -> NSTableRowView? { ApplicationRow() }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
         let isNative = tableColumn?.identifier.rawValue == "native"

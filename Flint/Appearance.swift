@@ -451,6 +451,22 @@ enum Appearance {
         return button
     }
 
+    static func configureSettingsButton(_ button: NSButton, symbol: String, title: String) {
+        button.title = ""
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: title)
+        button.imagePosition = .imageOnly
+        button.bezelStyle = .rounded
+        button.isBordered = true
+        button.showsBorderOnlyWhileMouseInside = true
+        button.controlSize = .small
+        button.toolTip = title
+        button.setAccessibilityLabel(title)
+        NSLayoutConstraint.activate([
+            button.widthAnchor.constraint(equalToConstant: 24),
+            button.heightAnchor.constraint(equalToConstant: 24)
+        ])
+    }
+
     static func spacer() -> NSView {
         let view = NSView()
         view.setContentHuggingPriority(.defaultLow, for: .horizontal)

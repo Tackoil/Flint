@@ -8,6 +8,13 @@ trap 'rm -rf "$appearance_check_dir"' EXIT
 xcrun swiftc -swift-version 5 -parse-as-library -D FLINT_APPEARANCE_CHECKS \
     -module-cache-path "${CLANG_MODULE_CACHE_PATH:-$appearance_check_dir/module-cache}" \
     "$project_dir/Flint/Appearance.swift" \
+    "$project_dir/Flint/SettingsKeyboardView.swift" \
+    "$project_dir/Flint/SettingsActions.swift" \
+    "$project_dir/Flint/SettingsActionsPopover.swift" \
+    "$project_dir/Flint/SettingsActionsPresentation.swift" \
+    "$project_dir/Flint/SettingsPopoverTransition.swift" \
+    "$project_dir/Flint/SettingsKeyboardEvents.swift" \
+    "$project_dir/Flint/SettingsArrowNavigation.swift" \
     "$project_dir/Flint/KeyboardHint.swift" \
     "$project_dir/Flint/LauncherHeaderFooter.swift" \
     "$project_dir/Flint/LauncherDialog.swift" \
@@ -38,6 +45,7 @@ xcrun swiftc -swift-version 5 -parse-as-library -D FLINT_APPEARANCE_CHECKS \
     "$project_dir/Tests/FlintAppearanceChecks/QRCodeChecks.swift" \
     "$project_dir/Tests/FlintAppearanceChecks/QuickLinkChecks.swift" \
     "$project_dir/Tests/FlintAppearanceChecks/ScriptChecks.swift" \
+    "$project_dir/Tests/FlintAppearanceChecks/SettingsKeyboardChecks.swift" \
     "$project_dir/Tests/FlintAppearanceChecks/main.swift" \
     -o "$appearance_check_dir/check"
 "$appearance_check_dir/check"

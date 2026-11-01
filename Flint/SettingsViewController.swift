@@ -29,19 +29,24 @@ final class SettingsViewController: NSViewController {
     private let onMenuBarVisibilityChange: (Bool) -> Void
     private let shortcutRecorder = ShortcutRecorder(frame: .zero)
     private let statusLabel = Appearance.label("", size: 12, color: .systemRed)
-    private let loginSwitch = NSSwitch()
-    private let menuBarSwitch = NSSwitch()
-    private let inputSourceSwitch = NSSwitch()
+    private let loginSwitch = SettingsSwitch()
+    private let menuBarSwitch = SettingsSwitch()
+    private let inputSourceSwitch = SettingsSwitch()
     private let loginStatus = Appearance.label("", size: 11, color: Appearance.muted)
-    private let loginSettingsButton = NSButton(title: "Open Login Items…", target: nil, action: nil)
+    private let loginSettingsButton = SettingsButton()
     private var activationObserver: NSObjectProtocol?
     private let content = NSStackView()
+    private let keyboardView = SettingsKeyboardView(footerLeadingInset: 192)
+    private var selectedSection = Section.general
+    private let restoreButton = SettingsButton()
     private var sectionButtons: [NSButton] = []
     private var selectionSurfaces: [NSView] = []
-    private lazy var quickLinkSettings = QuickLinkSettingsView()
+    private let quickLinkStore: QuickLinkStore
+    private lazy var quickLinkSettings = QuickLinkSettingsView(store: quickLinkStore)
     private let scriptStore: ScriptCommandStore
     private lazy var scriptSettings = ScriptSettingsView(store: scriptStore)
-    private lazy var translationSettings = TranslationSettingsView()
+    private let suppliedTranslationSettings: TranslationSettingsView?
+    private lazy var translationSettings = suppliedTranslationSettings ?? TranslationSettingsView()
     private var version: String {
         Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0.1.0"
     }
@@ -49,19 +54,23 @@ final class SettingsViewController: NSViewController {
     init(preferences: LauncherPreferences, onShortcutChange: @escaping (LauncherShortcut) -> Bool,
          onRecordingStateChange: @escaping (Bool) -> Void,
          onMenuBarVisibilityChange: @escaping (Bool) -> Void,
-         scriptStore: ScriptCommandStore = ScriptCommandStore()) {
+         scriptStore: ScriptCommandStore = ScriptCommandStore(),
+         quickLinkStore: QuickLinkStore = QuickLinkStore(),
+         translationSettings: TranslationSettingsView? = nil) {
         self.preferences = preferences
         self.onShortcutChange = onShortcutChange
         self.onRecordingStateChange = onRecordingStateChange
         self.onMenuBarVisibilityChange = onMenuBarVisibilityChange
         self.scriptStore = scriptStore
+        self.quickLinkStore = quickLinkStore
+        suppliedTranslationSettings = translationSettings
         super.init(nibName: nil, bundle: nil)
     }
 
     required init?(coder: NSCoder) { fatalError("Use init(preferences:onShortcutChange:)") }
 
     override func loadView() {
-        view = AppearanceSurfaceView(fillColor: .windowBackgroundColor)
+        view = keyboardView
         view.frame = NSRect(x: 0, y: 0, width: 720, height: 560)
         let sidebar = makeSidebar()
         content.orientation = .vertical
@@ -78,7 +87,7 @@ final class SettingsViewController: NSViewController {
             content.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: 24),
             content.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
             content.topAnchor.constraint(equalTo: view.topAnchor, constant: 54),
-            content.bottomAnchor.constraint(lessThanOrEqualTo: view.bottomAnchor, constant: -24)
+            content.bottomAnchor.constraint(lessThanOrEqualTo: keyboardView.footer.topAnchor, constant: -8)
         ])
         [loginSwitch, menuBarSwitch, inputSourceSwitch].forEach { $0.controlSize = .mini }
         configureRecorder()
@@ -89,6 +98,7 @@ final class SettingsViewController: NSViewController {
         menuBarSwitch.toolTip = "Show Flint’s flame icon in the menu bar."
         menuBarSwitch.state = preferences.showInMenuBar ? .on : .off
         configureInputSource()
+        configureKeyboard()
         showSection(.general)
     }
 
@@ -107,7 +117,7 @@ final class SettingsViewController: NSViewController {
         loginSwitch.toolTip = "Start Flint automatically when you log in."
         loginStatus.maximumNumberOfLines = 3
         loginStatus.lineBreakMode = .byWordWrapping
-        loginSettingsButton.bezelStyle = .rounded
+        Appearance.configureSettingsButton(loginSettingsButton, symbol: "arrow.up.right.square", title: "Open Login Items…")
         loginSettingsButton.target = self
         loginSettingsButton.action = #selector(openLoginSettings)
         activationObserver = NotificationCenter.default.addObserver(
@@ -164,7 +174,7 @@ final class SettingsViewController: NSViewController {
         sidebar.translatesAutoresizingMaskIntoConstraints = false
         let navigation = verticalStack([], spacing: 2)
         for section in Section.allCases {
-            let button = NSButton(title: "  \(section.title)", target: self, action: #selector(selectSection(_:)))
+            let button = SettingsButton(title: "  \(section.title)", target: self, action: #selector(selectSection(_:)))
             button.isBordered = false
             button.alignment = .left
             button.imageHugsTitle = true
@@ -236,6 +246,64 @@ final class SettingsViewController: NSViewController {
         statusLabel.setAccessibilityIdentifier("shortcutStatus")
     }
 
+    private var keyboardSection: SettingsKeyboardSection? {
+        switch selectedSection {
+        case .general: return nil
+        case .quickLinks: return quickLinkSettings
+        case .scripts: return scriptSettings
+        case .translation: return translationSettings
+        }
+    }
+
+    private func configureKeyboard() {
+        keyboardView.controls = { [weak self] in
+            guard let self else { return [] }
+            let controls = keyboardSection?.keyboardControls
+                ?? [loginSwitch, menuBarSwitch, inputSourceSwitch, shortcutRecorder, restoreButton, loginSettingsButton]
+            return controls + [sectionButtons[selectedSection.rawValue]]
+        }
+        keyboardView.actions = { [weak self] in self?.keyboardActions ?? [] }
+        keyboardView.navigationControls = { [weak self] in
+            guard let self else { return [] }
+            return keyboardSection?.keyboardNavigationControls
+                ?? [loginSwitch, menuBarSwitch, inputSourceSwitch, shortcutRecorder, loginSettingsButton]
+        }
+        keyboardView.sidebarControl = { [weak self] in
+            guard let self else { return nil }
+            return sectionButtons[selectedSection.rawValue]
+        }
+        keyboardView.primaryAction = { [weak self] control in
+            self?.keyboardSection?.keyboardPrimaryAction(for: control)
+        }
+        keyboardView.isRecording = { [weak self] in self?.shortcutRecorder.isRecording == true }
+        keyboardView.cancelRecording = { [weak self] in self?.cancelRecording() }
+        keyboardView.onCancel = { [weak self] in self?.view.window?.performClose(nil) }
+        keyboardView.onSectionArrow = { [weak self] control, offset in
+            guard let self, sectionButtons.contains(where: { $0 === control }) else { return false }
+            let index = min(max(selectedSection.rawValue + offset, 0), Section.allCases.count - 1)
+            showSection(Section(rawValue: index)!)
+            keyboardView.focus(sectionButtons[index])
+            return true
+        }
+    }
+
+    private var keyboardActions: [SettingsAction] {
+        let sections = Section.allCases.map { section in
+            SettingsAction(section.title, key: String(section.rawValue + 1), showsInMenu: false) { [weak self] in
+                self?.cancelRecording()
+                self?.showSection(section)
+            }
+        }
+        let general = [SettingsAction(button: restoreButton, title: "Restore Default Shortcut", key: "r", modifiers: [.command, .option]),
+                       SettingsAction(button: loginSettingsButton, title: "Open Login Items…")]
+        return (keyboardSection?.keyboardActions ?? general) + sections
+    }
+
+    override func viewDidAppear() {
+        super.viewDidAppear()
+        keyboardView.focusFirstControl()
+    }
+
     @objc private func selectSection(_ sender: NSButton) {
         guard let section = Section(rawValue: sender.tag) else { return }
         cancelRecording()
@@ -243,6 +311,7 @@ final class SettingsViewController: NSViewController {
     }
 
     private func showSection(_ section: Section) {
+        selectedSection = section
         for (button, selection) in zip(sectionButtons, selectionSurfaces) {
             selection.isHidden = button.tag != section.rawValue
             button.setAccessibilityValue(button.tag == section.rawValue ? "Selected" : "")
@@ -259,6 +328,8 @@ final class SettingsViewController: NSViewController {
         }
         if section == .translation { addContent(translationSettings) }
         if section == .scripts { scriptSettings.reload(); addContent(scriptSettings) }
+        keyboardView.focusFirstControl()
+        keyboardView.refreshActions()
     }
 
     func createQuickLink() {
@@ -281,17 +352,13 @@ final class SettingsViewController: NSViewController {
     }
 
     private func addGeneralContent() {
-        let restore = NSButton(image: NSImage(systemSymbolName: "arrow.counterclockwise",
-                                              accessibilityDescription: "Restore Default Shortcut")!,
-                               target: self, action: #selector(restoreDefault))
-        restore.bezelStyle = .rounded
-        restore.imagePosition = .imageOnly
-        restore.toolTip = "Restore default shortcut (Command–Space)."
-        restore.setAccessibilityLabel("Restore Default Shortcut")
-        restore.controlSize = .small
-        restore.widthAnchor.constraint(equalToConstant: 24).isActive = true
-        restore.heightAnchor.constraint(equalToConstant: 24).isActive = true
-        let shortcutControls = Appearance.stack([shortcutRecorder, restore], spacing: 8)
+        if restoreButton.image == nil {
+            Appearance.configureSettingsButton(restoreButton, symbol: "arrow.counterclockwise", title: "Restore Default Shortcut")
+            restoreButton.target = self
+            restoreButton.action = #selector(restoreDefault)
+            restoreButton.toolTip = "Restore default shortcut (Command–Space)."
+        }
+        let shortcutControls = Appearance.stack([shortcutRecorder, restoreButton], spacing: 8)
         let settings = card([
             settingRow("Open at Login", control: loginSwitch),
             settingRow("Show in Menu Bar", control: menuBarSwitch),
@@ -301,13 +368,15 @@ final class SettingsViewController: NSViewController {
         addContent(settings)
         content.setCustomSpacing(12, after: settings)
         addContent(statusLabel)
-        addContent(verticalStack([loginStatus, loginSettingsButton], spacing: 8))
+        addContent(Appearance.stack([loginStatus, Appearance.spacer(), loginSettingsButton], spacing: 8))
     }
 
     private func settingRow(_ title: String, control: NSView) -> NSView {
-        paddedRow(Appearance.stack([
+        let row = paddedRow(Appearance.stack([
             label(title, size: 13, color: Appearance.text), Appearance.spacer(), control
         ], spacing: 12), height: 38)
+        row.identifier = .init("settingsRow")
+        return row
     }
 
     private func label(_ text: String, size: CGFloat = 12, weight: NSFont.Weight = .regular,

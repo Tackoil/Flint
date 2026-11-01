@@ -660,7 +660,7 @@ private func checkTranslationSettingsControls() {
     precondition(addLanguage.isEnabled && table.numberOfRows == 1)
     let field = views.compactMap { $0 as? NSSecureTextField }.first!
     let buttons = views.compactMap { $0 as? NSButton }
-    let save = buttons.first { $0.title == "Save Key" }!
+    let save = buttons.first { $0.accessibilityLabel() == "Save Key" }!
     let remove = buttons.first { $0.accessibilityLabel() == "Remove API key" }!
     precondition(!field.isHidden && !save.isHidden && remove.isHidden)
     field.stringValue = "test-key-never-written-to-keychain"

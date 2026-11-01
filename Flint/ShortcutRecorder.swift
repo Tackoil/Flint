@@ -18,6 +18,8 @@ final class ShortcutRecorder: NSButton {
         title = ""
         bezelStyle = .rounded
         isBordered = false
+        focusRingType = .none
+        cell?.focusRingType = .none
         font = .monospacedSystemFont(ofSize: 13, weight: .medium)
         target = self
         action = #selector(toggleRecording)
@@ -37,6 +39,8 @@ final class ShortcutRecorder: NSButton {
     }
 
     required init?(coder: NSCoder) { fatalError("Use init(frame:)") }
+
+    override var acceptsFirstResponder: Bool { true }
 
     override func hitTest(_ point: NSPoint) -> NSView? {
         super.hitTest(point) == nil ? nil : self
