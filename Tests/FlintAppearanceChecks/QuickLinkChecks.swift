@@ -404,15 +404,37 @@ private func checkQuickLinkEditor(_ store: QuickLinkStore) {
 @MainActor
 private func checkQuickLinkSettings(_ store: QuickLinkStore) {
     let settings = QuickLinkSettingsView(store: store)
-    let window = AppearanceCheckWindow(contentRect: NSRect(x: 0, y: 0, width: 492, height: 400),
+    let window = AppearanceCheckWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 440),
                                        styleMask: [.titled], backing: .buffered, defer: false)
-    window.contentView = settings
+    let background = AppearanceSurfaceView(fillColor: .windowBackgroundColor)
+    window.contentView = background
+    settings.translatesAutoresizingMaskIntoConstraints = false
+    background.addSubview(settings)
+    NSLayoutConstraint.activate([
+        settings.leadingAnchor.constraint(equalTo: background.leadingAnchor, constant: 14),
+        settings.trailingAnchor.constraint(equalTo: background.trailingAnchor, constant: -14),
+        settings.topAnchor.constraint(equalTo: background.topAnchor, constant: 20),
+        settings.bottomAnchor.constraint(lessThanOrEqualTo: background.bottomAnchor, constant: -20)
+    ])
     let table = quickLinkViews(settings).compactMap { $0 as? NSTableView }.first!
     precondition(table.numberOfRows == store.links.count)
-    table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
-    let edit = quickLinkViews(settings).compactMap { $0 as? NSButton }.first { $0.title == "Edit…" }!
-    precondition(edit.isEnabled)
-    renderQuickLinkPreview(settings, name: "library")
+    AppearanceCheckWindows.show(window)
+    for appearance: NSAppearance.Name in [.aqua, .darkAqua] {
+        window.appearance = NSAppearance(named: appearance)
+        renderQuickLinkPreview(background, name: "library-\(appearance.rawValue)")
+        settings.layoutSubtreeIfNeeded()
+        let cell = table.view(atColumn: 0, row: 0, makeIfNecessary: true) as! NSTableCellView
+        precondition(cell.imageView?.image != nil && cell.textField?.stringValue == store.links[0].name)
+        precondition(cell.bounds.contains(cell.convert(cell.textField!.bounds, from: cell.textField!)))
+    }
+    let buttons = quickLinkViews(settings).compactMap { $0 as? NSButton }
+    precondition(!buttons.contains { ["Edit…", "Delete", "More"].contains($0.title) })
+    checkQuickLinkSettingsEditing(settings, table: table, store: store, window: window)
+    let actions = settings.tableView(table, rowActionsForRow: 0, edge: .trailing)
+    precondition(actions.count == 1 && actions[0].title == "Delete" && actions[0].style == .destructive)
+    precondition(settings.tableView(table, rowActionsForRow: 0, edge: .leading).isEmpty)
+    precondition(settings.tableView(table, rowActionsForRow: -1, edge: .trailing).isEmpty)
+    precondition(settings.tableView(table, rowActionsForRow: store.links.count, edge: .trailing).isEmpty)
     window.orderOut(nil)
     let controller = SettingsViewController(preferences: LauncherPreferences(), onShortcutChange: { _ in true },
                                             onRecordingStateChange: { _ in }, onMenuBarVisibilityChange: { _ in })
@@ -422,8 +444,41 @@ private func checkQuickLinkSettings(_ store: QuickLinkStore) {
     let library = quickLinkViews(controller.view).compactMap { $0 as? QuickLinkSettingsView }.first!
     precondition(controller.view.bounds.contains(controller.view.convert(library.bounds, from: library)),
                  "Quick Links settings must fit at the minimum window size")
-    renderQuickLinkPreview(controller.view, name: "settings")
+    for appearance: NSAppearance.Name in [.aqua, .darkAqua] {
+        sidebarWindow.appearance = NSAppearance(named: appearance)
+        renderQuickLinkPreview(controller.view, name: "settings-\(appearance.rawValue)")
+    }
     sidebarWindow.orderOut(nil)
+}
+
+@MainActor
+private func checkQuickLinkSettingsEditing(_ settings: QuickLinkSettingsView, table: NSTableView,
+                                          store: QuickLinkStore, window: NSWindow) {
+    let original = store.links[0]
+    table.selectRowIndexes(IndexSet(integer: 0), byExtendingSelection: false)
+    precondition(table.action != nil && table.sendAction(table.action, to: table.target),
+                 "A single row click must open the editor")
+    let sheet = window.attachedSheet!
+    precondition(!window.isKeyWindow && !sheet.isKeyWindow,
+                 "Editor popups must stay offscreen without taking keyboard focus")
+    let controls = quickLinkViews(sheet.contentView!)
+    let name = controls.compactMap { $0 as? NSTextField }.first { $0.accessibilityLabel() == "Quick link name" }!
+    precondition(name.stringValue == original.name)
+    name.stringValue = "Renamed from Settings"
+    controls.compactMap { $0 as? NSButton }.first { $0.title == "Save Quick Link" }!.performClick(nil)
+    RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+    precondition(window.attachedSheet == nil)
+    precondition(store.links[0].id == original.id && store.links[0].name == "Renamed from Settings")
+    let cell = table.view(atColumn: 0, row: 0, makeIfNecessary: true) as! NSTableCellView
+    precondition(cell.textField?.stringValue == "Renamed from Settings", "Saving must refresh the row immediately")
+    precondition(table.sendAction(table.action, to: table.target))
+    let cancelControls = quickLinkViews(window.attachedSheet!.contentView!)
+    cancelControls.compactMap { $0 as? NSTextField }.first { $0.accessibilityLabel() == "Quick link name" }!.stringValue = "Discard me"
+    cancelControls.compactMap { $0 as? NSButton }.first { $0.title == "Cancel" }!.performClick(nil)
+    RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+    precondition(store.links[0].name == "Renamed from Settings")
+    precondition(!window.isKeyWindow, "Editing checks must preserve the user's keyboard focus")
+    print("PASS: quick-link rows open editing on one click, refresh after saving, cancel safely, and offer native swipe-to-delete")
 }
 
 @MainActor

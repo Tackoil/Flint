@@ -5,8 +5,6 @@ final class QuickLinkSettingsView: NSStackView, NSTableViewDataSource, NSTableVi
     private let store: QuickLinkStore
     private let table = NSTableView()
     private let emptyLabel = Appearance.label("No quick links yet. Add a place you open often.", size: 13)
-    private let editButton = NSButton(title: "Edit…", target: nil, action: nil)
-    private let deleteButton = NSButton(title: "Delete", target: nil, action: nil)
     private var links: [QuickLink] = []
     private var editor: QuickLinkEditorController?
 
@@ -16,19 +14,10 @@ final class QuickLinkSettingsView: NSStackView, NSTableViewDataSource, NSTableVi
         orientation = .vertical
         alignment = .leading
         spacing = 14
-        let description = Appearance.label("Open websites, files, folders, and app links by name from Flint.", size: 13)
-        description.maximumNumberOfLines = 2
-        description.lineBreakMode = .byWordWrapping
         let add = NSButton(title: "Add Quick Link…", target: self, action: #selector(addLink))
         add.bezelStyle = .rounded
-        editButton.bezelStyle = .rounded
-        editButton.target = self
-        editButton.action = #selector(editLink)
-        deleteButton.bezelStyle = .rounded
-        deleteButton.target = self
-        deleteButton.action = #selector(deleteLink)
-        let toolbar = Appearance.stack([add, Appearance.spacer(), editButton, deleteButton], spacing: 8)
-        for child in [description, makeList(), toolbar] {
+        let toolbar = Appearance.stack([Appearance.spacer(), add], spacing: 8)
+        for child in [makeList(), toolbar] {
             addArrangedSubview(child)
             child.widthAnchor.constraint(equalTo: widthAnchor).isActive = true
         }
@@ -42,19 +31,31 @@ final class QuickLinkSettingsView: NSStackView, NSTableViewDataSource, NSTableVi
         table.addTableColumn(column)
         table.headerView = nil
         table.rowHeight = 54
-        table.style = .inset
+        table.style = .fullWidth
+        table.intercellSpacing = .zero
+        table.backgroundColor = .clear
+        table.columnAutoresizingStyle = .lastColumnOnlyAutoresizingStyle
+        table.allowsColumnReordering = false
+        table.allowsMultipleSelection = false
         table.delegate = self
         table.dataSource = self
         table.target = self
+        table.action = #selector(editLink)
         table.doubleAction = #selector(editLink)
         table.setAccessibilityLabel("Quick Links")
         let scroll = NSScrollView()
         scroll.documentView = table
         scroll.hasVerticalScroller = true
         scroll.autohidesScrollers = true
-        scroll.borderType = .bezelBorder
+        scroll.borderType = .noBorder
+        scroll.drawsBackground = false
         scroll.translatesAutoresizingMaskIntoConstraints = false
-        let container = NSView()
+        let container = AppearanceSurfaceView(fillColor: NSColor(name: nil) { appearance in
+            appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+                ? NSColor(white: 0.15, alpha: 1) : NSColor(white: 0.96, alpha: 1)
+        })
+        container.layer?.cornerRadius = 12
+        container.layer?.masksToBounds = true
         container.heightAnchor.constraint(equalToConstant: 320).isActive = true
         container.addSubview(scroll)
         emptyLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -83,16 +84,10 @@ final class QuickLinkSettingsView: NSStackView, NSTableViewDataSource, NSTableVi
             table.selectRowIndexes(IndexSet(integer: index), byExtendingSelection: false)
         }
         emptyLabel.isHidden = !links.isEmpty
-        updateSelection()
     }
 
     private var selectedLink: QuickLink? {
         links.indices.contains(table.selectedRow) ? links[table.selectedRow] : nil
-    }
-
-    private func updateSelection() {
-        editButton.isEnabled = selectedLink != nil
-        deleteButton.isEnabled = selectedLink != nil
     }
 
     @objc func addLink() { showEditor(link: nil) }
@@ -111,49 +106,84 @@ final class QuickLinkSettingsView: NSStackView, NSTableViewDataSource, NSTableVi
         }
     }
 
-    @objc private func deleteLink() {
-        guard let link = selectedLink, let window else { return }
-        let alert = NSAlert()
-        alert.messageText = "Delete “\(link.name)”?"
-        alert.informativeText = "This removes the quick link from Flint."
-        alert.addButton(withTitle: "Delete")
-        alert.addButton(withTitle: "Cancel")
-        alert.buttons[0].hasDestructiveAction = true
-        alert.beginSheetModal(for: window) { [weak self] response in
-            guard response == .alertFirstButtonReturn, let self else { return }
-            do {
-                try self.store.remove(id: link.id)
-                self.reload()
-            } catch {
-                NSAlert(error: error).beginSheetModal(for: window)
-            }
+    private func removeLink(id: UUID) {
+        do {
+            try store.remove(id: id)
+            reload()
+        } catch {
+            guard let window else { return }
+            NSAlert(error: error).beginSheetModal(for: window)
         }
     }
 
     func numberOfRows(in tableView: NSTableView) -> Int { links.count }
-    func tableViewSelectionDidChange(_ notification: Notification) { updateSelection() }
+
+    func tableView(_ tableView: NSTableView, rowActionsForRow row: Int,
+                   edge: NSTableView.RowActionEdge) -> [NSTableViewRowAction] {
+        guard edge == .trailing, links.indices.contains(row) else { return [] }
+        let id = links[row].id
+        return [NSTableViewRowAction(style: .destructive, title: "Delete") { [weak self, weak tableView] _, _ in
+            tableView?.rowActionsVisible = false
+            self?.removeLink(id: id)
+        }]
+    }
 
     func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-        let link = links[row]
+        QuickLinkSettingsCell(link: links[row], showsDivider: row < links.count - 1)
+    }
+}
+
+@MainActor
+private final class QuickLinkSettingsCell: NSTableCellView {
+    init(link: QuickLink, showsDivider: Bool) {
+        super.init(frame: .zero)
+        let icon = NSImageView(image: Self.icon(for: link))
+        icon.contentTintColor = .labelColor
+        icon.imageScaling = .scaleProportionallyDown
         let name = Appearance.label(link.name, size: 13, weight: .medium, color: .labelColor)
-        let destination = Appearance.label(link.link, size: 11)
+        name.lineBreakMode = .byTruncatingTail
+        name.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let destination = Appearance.label(link.link, size: 12)
         destination.lineBreakMode = .byTruncatingMiddle
         destination.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        let labels = NSStackView(views: [name, destination])
-        labels.orientation = .vertical
-        labels.alignment = .leading
-        labels.spacing = 3
-        let row = NSTableCellView()
-        labels.translatesAutoresizingMaskIntoConstraints = false
-        row.addSubview(labels)
+        let content = Appearance.stack([icon, name, Appearance.spacer(), destination], spacing: 10)
+        content.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(content)
+        textField = name
+        imageView = icon
+        toolTip = "\(link.name) — \(link.link)"
+        setAccessibilityLabel("\(link.name), \(link.link)")
         NSLayoutConstraint.activate([
-            labels.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 8),
-            labels.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -8),
-            labels.centerYAnchor.constraint(equalTo: row.centerYAnchor),
-            destination.widthAnchor.constraint(equalTo: labels.widthAnchor)
+            icon.widthAnchor.constraint(equalToConstant: 20),
+            icon.heightAnchor.constraint(equalToConstant: 20),
+            content.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+            content.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
+            content.centerYAnchor.constraint(equalTo: centerYAnchor),
+            destination.widthAnchor.constraint(equalTo: widthAnchor, multiplier: 0.42)
         ])
-        row.setAccessibilityLabel("\(link.name), \(link.link)")
-        return row
+        if showsDivider { addDivider() }
+    }
+
+    required init?(coder: NSCoder) { fatalError("Use init(link:showsDivider:)") }
+
+    private static func icon(for link: QuickLink) -> NSImage {
+        if let url = try? link.resolvedURL(), url.isFileURL {
+            return NSWorkspace.shared.icon(forFile: url.path)
+        }
+        if let application = link.applicationURL { return NSWorkspace.shared.icon(forFile: application.path) }
+        return NSImage(systemSymbolName: "link", accessibilityDescription: nil) ?? NSImage()
+    }
+
+    private func addDivider() {
+        let divider = AppearanceSurfaceView(fillColor: .separatorColor)
+        divider.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(divider)
+        NSLayoutConstraint.activate([
+            divider.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 14),
+            divider.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -14),
+            divider.bottomAnchor.constraint(equalTo: bottomAnchor),
+            divider.heightAnchor.constraint(equalToConstant: 0.5)
+        ])
     }
 }
 

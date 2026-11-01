@@ -68,7 +68,7 @@ final class SettingsViewController: NSViewController {
             sidebar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             sidebar.topAnchor.constraint(equalTo: view.topAnchor),
             sidebar.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            sidebar.widthAnchor.constraint(equalToConstant: 180),
+            sidebar.widthAnchor.constraint(equalToConstant: 168),
             content.leadingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: 24),
             content.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
             content.topAnchor.constraint(equalTo: view.topAnchor, constant: 54),
@@ -156,9 +156,7 @@ final class SettingsViewController: NSViewController {
         sidebar.material = .sidebar
         sidebar.blendingMode = .behindWindow
         sidebar.translatesAutoresizingMaskIntoConstraints = false
-        let heading = label("SETTINGS", size: 10, weight: .semibold)
-        let navigation = verticalStack([heading], spacing: 8)
-        navigation.setCustomSpacing(14, after: heading)
+        let navigation = verticalStack([], spacing: 2)
         for section in Section.allCases {
             let button = NSButton(title: "  \(section.title)", target: self, action: #selector(selectSection(_:)))
             button.isBordered = false
@@ -168,7 +166,7 @@ final class SettingsViewController: NSViewController {
             button.contentTintColor = .labelColor
             button.tag = section.rawValue
             button.image = NSImage(systemSymbolName: section.symbol, accessibilityDescription: nil)?
-                .withSymbolConfiguration(.init(pointSize: 15, weight: .medium))
+                .withSymbolConfiguration(.init(pointSize: 14, weight: .regular))
             button.imagePosition = .imageLeading
             button.setAccessibilityLabel(section.title)
             sectionButtons.append(button)
@@ -177,7 +175,7 @@ final class SettingsViewController: NSViewController {
                 appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
                     ? NSColor(white: 0.27, alpha: 1) : NSColor(white: 0.84, alpha: 1)
             })
-            selection.layer?.cornerRadius = 8
+            selection.layer?.cornerRadius = 6
             selectionSurfaces.append(selection)
             [selection, button].forEach {
                 $0.translatesAutoresizingMaskIntoConstraints = false
@@ -186,19 +184,19 @@ final class SettingsViewController: NSViewController {
             navigation.addArrangedSubview(row)
             NSLayoutConstraint.activate([
                 row.widthAnchor.constraint(equalTo: navigation.widthAnchor),
-                row.heightAnchor.constraint(equalToConstant: 36),
+                row.heightAnchor.constraint(equalToConstant: 30),
                 selection.leadingAnchor.constraint(equalTo: row.leadingAnchor),
                 selection.trailingAnchor.constraint(equalTo: row.trailingAnchor),
                 selection.topAnchor.constraint(equalTo: row.topAnchor),
                 selection.bottomAnchor.constraint(equalTo: row.bottomAnchor),
-                button.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 10),
-                button.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -10),
+                button.leadingAnchor.constraint(equalTo: row.leadingAnchor, constant: 8),
+                button.trailingAnchor.constraint(equalTo: row.trailingAnchor, constant: -8),
                 button.topAnchor.constraint(equalTo: row.topAnchor),
                 button.bottomAnchor.constraint(equalTo: row.bottomAnchor)
             ])
         }
         let identity = Appearance.stack([
-            Appearance.symbol("flame.fill", size: 17, color: Appearance.accent),
+            Appearance.symbol("flame.fill", size: 15, color: Appearance.accent),
             label("Flint", size: 12, weight: .semibold, color: Appearance.text),
             Appearance.spacer(), label(version, size: 11)
         ])
@@ -208,12 +206,12 @@ final class SettingsViewController: NSViewController {
             sidebar.addSubview($0)
         }
         NSLayoutConstraint.activate([
-            navigation.leadingAnchor.constraint(equalTo: sidebar.leadingAnchor, constant: 16),
-            navigation.trailingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: -16),
-            navigation.topAnchor.constraint(equalTo: sidebar.topAnchor, constant: 66),
-            identity.leadingAnchor.constraint(equalTo: sidebar.leadingAnchor, constant: 22),
-            identity.trailingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: -22),
-            identity.bottomAnchor.constraint(equalTo: sidebar.bottomAnchor, constant: -24),
+            navigation.leadingAnchor.constraint(equalTo: sidebar.leadingAnchor, constant: 10),
+            navigation.trailingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: -10),
+            navigation.topAnchor.constraint(equalTo: sidebar.topAnchor, constant: 54),
+            identity.leadingAnchor.constraint(equalTo: sidebar.leadingAnchor, constant: 18),
+            identity.trailingAnchor.constraint(equalTo: sidebar.trailingAnchor, constant: -18),
+            identity.bottomAnchor.constraint(equalTo: sidebar.bottomAnchor, constant: -18),
             divider.widthAnchor.constraint(equalToConstant: 0.5),
             divider.trailingAnchor.constraint(equalTo: sidebar.trailingAnchor),
             divider.topAnchor.constraint(equalTo: sidebar.topAnchor),
