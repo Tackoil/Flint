@@ -27,7 +27,7 @@ To keep the launcher visible when it loses focus, quit Flint first and launch it
 open build/Build/Products/Debug/Flint.app --args --keep-open
 ```
 
-Escape and your configured launcher shortcut still hide the launcher. Opening an application also dismisses it. In Xcode, add `--keep-open` under **Edit Scheme → Run → Arguments Passed On Launch** for the same behavior.
+Escape and your configured launcher shortcut still hide the launcher. Opening an application dismisses Flint immediately, without waiting for the app to finish opening. In Xcode, add `--keep-open` under **Edit Scheme → Run → Arguments Passed On Launch** for the same behavior.
 
 ## Applications
 

@@ -661,6 +661,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         chrome.openButton.isEnabled = false
         let configuration = NSWorkspace.OpenConfiguration()
         configuration.activates = true
+        onDismiss?()
         NSWorkspace.shared.openApplication(at: app.url, configuration: configuration) { [weak self] _, error in
             DispatchQueue.main.async { self?.finishOpening(app, error: error) }
         }
@@ -708,7 +709,6 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     private func finishOpening(_ app: ApplicationRecord, error: Error?) {
         isOpening = false
         chrome.openButton.isEnabled = !results.isEmpty
-        onDismiss?()
         guard let error else { return }
         Task { await errorNotifier.notifyLaunchFailure(for: app, error: error) }
     }
