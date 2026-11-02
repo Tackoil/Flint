@@ -5,6 +5,14 @@ import ServiceManagement
 final class SettingsViewController: NSViewController {
     private enum Section: Int, CaseIterable {
         case general, quickLinks, scripts, translation
+        var isIncludedInBuild: Bool {
+            switch self {
+            case .general: return true
+            case .quickLinks: return BuildFeatures.quickLinks
+            case .scripts: return BuildFeatures.scripts
+            case .translation: return BuildFeatures.translation
+            }
+        }
         var title: String {
             switch self {
             case .general: return "General"
@@ -38,6 +46,8 @@ final class SettingsViewController: NSViewController {
     private let content = NSStackView()
     private let keyboardView = SettingsKeyboardView(footerLeadingInset: 192)
     private var selectedSection = Section.general
+    private let availableSections = Section.allCases.filter(\.isIncludedInBuild)
+    private var selectedSectionIndex: Int { availableSections.firstIndex(of: selectedSection)! }
     private let restoreButton = SettingsButton()
     private var sectionButtons: [NSButton] = []
     private var selectionSurfaces: [NSView] = []
@@ -173,7 +183,7 @@ final class SettingsViewController: NSViewController {
         sidebar.blendingMode = .behindWindow
         sidebar.translatesAutoresizingMaskIntoConstraints = false
         let navigation = verticalStack([], spacing: 2)
-        for section in Section.allCases {
+        for section in availableSections {
             let button = SettingsButton(title: "  \(section.title)", target: self, action: #selector(selectSection(_:)))
             button.isBordered = false
             button.alignment = .left
@@ -260,7 +270,7 @@ final class SettingsViewController: NSViewController {
             guard let self else { return [] }
             let controls = keyboardSection?.keyboardControls
                 ?? [loginSwitch, menuBarSwitch, inputSourceSwitch, shortcutRecorder, restoreButton, loginSettingsButton]
-            return controls + [sectionButtons[selectedSection.rawValue]]
+            return controls + [sectionButtons[selectedSectionIndex]]
         }
         keyboardView.actions = { [weak self] in self?.keyboardActions ?? [] }
         keyboardView.navigationControls = { [weak self] in
@@ -270,7 +280,7 @@ final class SettingsViewController: NSViewController {
         }
         keyboardView.sidebarControl = { [weak self] in
             guard let self else { return nil }
-            return sectionButtons[selectedSection.rawValue]
+            return sectionButtons[selectedSectionIndex]
         }
         keyboardView.primaryAction = { [weak self] control in
             self?.keyboardSection?.keyboardPrimaryAction(for: control)
@@ -280,16 +290,16 @@ final class SettingsViewController: NSViewController {
         keyboardView.onCancel = { [weak self] in self?.view.window?.performClose(nil) }
         keyboardView.onSectionArrow = { [weak self] control, offset in
             guard let self, sectionButtons.contains(where: { $0 === control }) else { return false }
-            let index = min(max(selectedSection.rawValue + offset, 0), Section.allCases.count - 1)
-            showSection(Section(rawValue: index)!)
+            let index = min(max(selectedSectionIndex + offset, 0), availableSections.count - 1)
+            showSection(availableSections[index])
             keyboardView.focus(sectionButtons[index])
             return true
         }
     }
 
     private var keyboardActions: [SettingsAction] {
-        let sections = Section.allCases.map { section in
-            SettingsAction(section.title, key: String(section.rawValue + 1), showsInMenu: false) { [weak self] in
+        let sections = availableSections.enumerated().map { index, section in
+            SettingsAction(section.title, key: String(index + 1), showsInMenu: false) { [weak self] in
                 self?.cancelRecording()
                 self?.showSection(section)
             }
@@ -311,6 +321,7 @@ final class SettingsViewController: NSViewController {
     }
 
     private func showSection(_ section: Section) {
+        guard section.isIncludedInBuild else { return }
         selectedSection = section
         for (button, selection) in zip(sectionButtons, selectionSurfaces) {
             selection.isHidden = button.tag != section.rawValue
@@ -333,6 +344,7 @@ final class SettingsViewController: NSViewController {
     }
 
     func createQuickLink() {
+        guard BuildFeatures.quickLinks else { return }
         _ = view
         cancelRecording()
         showSection(.quickLinks)
@@ -340,12 +352,14 @@ final class SettingsViewController: NSViewController {
     }
 
     func showTranslationSettings() {
+        guard BuildFeatures.translation else { return }
         _ = view
         cancelRecording()
         showSection(.translation)
     }
 
     func showScriptSettings() {
+        guard BuildFeatures.scripts else { return }
         _ = view
         cancelRecording()
         showSection(.scripts)

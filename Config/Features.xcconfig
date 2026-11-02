@@ -1,0 +1,4 @@
+// Remove flags to choose the optional features included in this build.
+// An empty list builds the application launcher and General settings only.
+// Command-line builds can override FLINT_FEATURES without editing this file.
+FLINT_FEATURES = FLINT_CALCULATOR FLINT_TIMESTAMPS FLINT_COLORS FLINT_NUMBER_BASES FLINT_QR FLINT_TRANSLATION FLINT_QUICK_LINKS FLINT_SCRIPTS FLINT_SYSTEM_ACTIONS

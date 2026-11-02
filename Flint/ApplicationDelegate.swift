@@ -14,7 +14,9 @@ final class ApplicationDelegate: NSObject, NSApplicationDelegate, UNUserNotifica
         UNUserNotificationCenter.current().delegate = self
         installMainMenu()
         // Resolve Keychain permission before showing a launcher that dismisses on focus loss.
+        #if !FLINT_CUSTOM_FEATURES || FLINT_TRANSLATION
         _ = try? TranslationAPIKeyStore().read()
+        #endif
         let keepsOpenOnFocusLoss = ProcessInfo.processInfo.arguments.contains("--keep-open")
         launcher = LauncherWindowController(preferences: preferences, keepsOpenOnFocusLoss: keepsOpenOnFocusLoss)
         hotKey = makeHotKey(for: preferences.shortcut)

@@ -334,9 +334,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
             results = []
             return
         }
-        let items = applications.map(LauncherItem.application) + SystemAction.allCases.map(LauncherItem.action)
-            + quickLinkStore.links.map(LauncherItem.quickLink) + scripts.map(LauncherItem.script)
-            + [.translation, .createQuickLink, .qrCode, .scriptCommands]
+        let items = availableLauncherItems
         let evaluated = Calculator.evaluate(query, timestampUnit: timestampOutputUnit, colorFormat: colorOutputFormat,
                                             numberBaseFormat: numberBaseOutputFormat)
         if case .numeric(let previous) = calculation, case .numeric(let current) = evaluated,
@@ -348,7 +346,18 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         results = isExpanded && calculation == nil ? ApplicationSearch.filter(items, query: query) : []
     }
 
+    private var availableLauncherItems: [LauncherItem] {
+        var items = applications.map(LauncherItem.application)
+        if BuildFeatures.systemActions { items += SystemAction.allCases.map(LauncherItem.action) }
+        if BuildFeatures.quickLinks { items += quickLinkStore.links.map(LauncherItem.quickLink) + [.createQuickLink] }
+        if BuildFeatures.scripts { items += scripts.map(LauncherItem.script) + [.scriptCommands] }
+        if BuildFeatures.translation { items.append(.translation) }
+        if BuildFeatures.qrCode { items.append(.qrCode) }
+        return items
+    }
+
     private func updateTranslationSession() {
+        guard BuildFeatures.translation else { return }
         translationSession.update(query: isTranslationMode ? TranslationQuery(text: chrome.searchField.stringValue) : nil,
                                   language: translationPreferences.targetLanguage,
                                   isComposing: (chrome.searchField.currentEditor() as? NSTextView)?.hasMarkedText() == true,
@@ -523,6 +532,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     }
 
     private func refreshScripts() {
+        guard BuildFeatures.scripts else { return }
         let id = UUID()
         scriptRefreshID = id
         let directories = scriptStore.directories
@@ -660,6 +670,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     }
 
     private func enterQRCodeMode() {
+        guard BuildFeatures.qrCode else { return }
         resultInputs.removeAll()
         isQRCodeMode = true
         chrome.searchField.stringValue = ""
@@ -682,6 +693,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     }
 
     private func enterTranslationMode() {
+        guard BuildFeatures.translation else { return }
         resultInputs.removeAll()
         isTranslationMode = true
         isTranslationLanguageSwitchingEnabled = true

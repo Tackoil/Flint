@@ -4,6 +4,8 @@ import AppKit
 struct AppearanceChecks {
     @MainActor static func main() {
         print(AppearanceCheckWindows.showsWindows ? "UI checks: visible windows" : "UI checks: offscreen windows; keyboard focus preserved")
+        checkBuildFeatures()
+        if ProcessInfo.processInfo.environment["FLINT_BUILD_FEATURE_CHECKS_ONLY"] == "1" { return }
         if ProcessInfo.processInfo.environment["FLINT_SETTINGS_ONLY"] == "1" {
             checkSettingsKeyboard()
             return

@@ -31,6 +31,45 @@ open build/Build/Products/Debug/Flint.app --args --keep-open
 
 Escape and your configured launcher shortcut still hide the launcher. Opening an application dismisses Flint immediately, without waiting for the app to finish opening. In Xcode, add `--keep-open` under **Edit Scheme → Run → Arguments Passed On Launch** for the same behavior.
 
+## Build-time feature selection
+
+All optional features are enabled by default. Edit `Config/Features.xcconfig` and keep only the flags you want in `FLINT_FEATURES`. This applies to both Debug and Release builds in Xcode. Application discovery, launching, and General settings are always available. An empty `FLINT_FEATURES` builds just those essentials.
+
+For a single build, select features without editing the configuration:
+
+```sh
+sh scripts/build.sh --features calculator,colors,qr
+sh scripts/build.sh --features none
+sh scripts/build.sh --features all -configuration Release
+```
+
+Running `sh scripts/build.sh` uses `Config/Features.xcconfig`. The script only builds; open `build/Build/Products/Debug/Flint.app` after quitting any running instance to try a Debug build. Additional arguments are passed to `xcodebuild`.
+
+| Feature name | Configuration flag |
+| --- | --- |
+| `calculator` | `FLINT_CALCULATOR` |
+| `timestamps` | `FLINT_TIMESTAMPS` |
+| `colors` | `FLINT_COLORS` |
+| `number-bases` | `FLINT_NUMBER_BASES` |
+| `qr` | `FLINT_QR` |
+| `translation` | `FLINT_TRANSLATION` |
+| `quick-links` | `FLINT_QUICK_LINKS` |
+| `scripts` | `FLINT_SCRIPTS` |
+| `system-actions` | `FLINT_SYSTEM_ACTIONS` |
+
+Features are selected independently. Disabled tools disappear from launcher search and Settings, and disabled calculation formats stay in normal search. Settings shortcuts become Command–1…N in the order of the remaining sections. Disabling scripts skips script discovery; disabling translation skips the startup Keychain read. Saved preferences, links, script folders, and credentials are retained for future builds.
+
+Selection uses Swift compilation conditions and requires rebuilding to change. Shared model and view types remain compiled, so this is a capability selection mechanism rather than a guarantee of binary-size reduction. Raw `xcodebuild` also accepts a space-separated flag override, such as `FLINT_FEATURES="FLINT_CALCULATOR FLINT_QR"`. Standalone Swift package builds keep all features enabled by default.
+
+Run the offscreen feature integration checks against a selection:
+
+```sh
+sh scripts/check-appearance.sh --features none
+sh scripts/check-appearance.sh --features calculator,translation
+```
+
+These focused checks verify search availability, calculation routing, tool entry, and Settings navigation. Run the full appearance suite without `--features` to check the default all-feature build.
+
 ## Applications
 
 Flint discovers installed applications in `/Applications`, `~/Applications`, `/System/Applications`, system CoreServices applications, and the system Cryptex applications folder. It also includes Finder from `/System/Library/CoreServices/Finder.app`. It includes category folders such as Utilities, skips apps embedded inside other apps, and deduplicates applications by bundle identifier. Discovery runs off the main thread, while native app icons load only for displayed rows.
