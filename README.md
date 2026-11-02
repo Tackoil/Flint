@@ -33,6 +33,40 @@ open build/Build/Products/Debug/Flint.app --args --keep-open
 
 Escape and your configured launcher shortcut still hide the launcher. Opening an application dismisses Flint immediately, without waiting for the app to finish opening. In Xcode, add `--keep-open` under **Edit Scheme → Run → Arguments Passed On Launch** for the same behavior.
 
+## Repository layout
+
+The Xcode navigator mirrors the folders on disk. `Flint` is the macOS application target; `Sources/FlintCore` and `Tests/FlintCoreTests` keep the standard Swift package layout for testing the core independently.
+
+```text
+Flint/
+  App/                 Entry point and application lifecycle
+  Launcher/            Launcher window, search controller, and rows
+  Settings/            Settings shell and keyboard navigation
+  Features/            Feature-specific AppKit views and settings
+  Shared/              Shared appearance, controls, and result presentation
+  Platform/            macOS keyboard integration
+  Resources/           Asset catalog
+  Supporting/          Info.plist and signing entitlements
+Sources/FlintCore/
+  Applications/        Application discovery and search
+  Launcher/            Feature availability, items, placement, and calculation routing
+  Preferences/         Launcher preferences and shortcut models
+  Platform/            macOS notification integration
+  Features/            One folder per optional feature
+Tests/
+  FlintCoreTests/      Unit tests grouped by feature and shared responsibility
+  FlintAppearanceChecks/  Offscreen integration checks grouped the same way
+Config/                Base, Debug, Release, and feature-selection xcconfig files
+scripts/               Build and offscreen-check entry points
+design/                Branding source artwork and README banner
+```
+
+Each optional feature's model and service code lives in `Sources/FlintCore/Features/<Feature>`. Its dedicated AppKit UI, when present, lives in `Flint/Features/<Feature>`, with corresponding tests under `Tests/*/Features/<Feature>`. The folders are `Calculator`, `Timestamps`, `Colors`, `NumberBases`, `QRCode`, `Translation`, `QuickLinks`, `Scripts`, and `SystemActions`.
+
+Calculation routing and the shared calculation result container stay with the launcher and shared UI because they serve several features. Feature folders retain the existing compilation flags and share their current targets. Adding a folder does not create a separate Swift module or exclude its source files from compilation.
+
+Common build and signing settings live in `Config/Base.xcconfig`. `Debug.xcconfig` and `Release.xcconfig` add the configuration-specific compiler settings; both include the same `Features.xcconfig` through the base configuration. The appearance-check script discovers nested Swift sources automatically, excluding the normal app entry point and lifecycle.
+
 ## Build-time feature selection
 
 All optional features are enabled by default. Edit `Config/Features.xcconfig` and keep only the flags you want in `FLINT_FEATURES`. This applies to both Debug and Release builds in Xcode. Application discovery, launching, and General settings are always available. An empty `FLINT_FEATURES` builds just those essentials.
@@ -47,17 +81,17 @@ sh scripts/build.sh --features all -configuration Release
 
 Running `sh scripts/build.sh` uses `Config/Features.xcconfig`. The script only builds; open `build/Build/Products/Debug/Flint.app` after quitting any running instance to try a Debug build. Additional arguments are passed to `xcodebuild`.
 
-| Feature name | Configuration flag |
-| --- | --- |
-| `calculator` | `FLINT_CALCULATOR` |
-| `timestamps` | `FLINT_TIMESTAMPS` |
-| `colors` | `FLINT_COLORS` |
-| `number-bases` | `FLINT_NUMBER_BASES` |
-| `qr` | `FLINT_QR` |
-| `translation` | `FLINT_TRANSLATION` |
-| `quick-links` | `FLINT_QUICK_LINKS` |
-| `scripts` | `FLINT_SCRIPTS` |
-| `system-actions` | `FLINT_SYSTEM_ACTIONS` |
+| Feature name | Folder | Configuration flag |
+| --- | --- | --- |
+| `calculator` | `Calculator` | `FLINT_CALCULATOR` |
+| `timestamps` | `Timestamps` | `FLINT_TIMESTAMPS` |
+| `colors` | `Colors` | `FLINT_COLORS` |
+| `number-bases` | `NumberBases` | `FLINT_NUMBER_BASES` |
+| `qr` | `QRCode` | `FLINT_QR` |
+| `translation` | `Translation` | `FLINT_TRANSLATION` |
+| `quick-links` | `QuickLinks` | `FLINT_QUICK_LINKS` |
+| `scripts` | `Scripts` | `FLINT_SCRIPTS` |
+| `system-actions` | `SystemActions` | `FLINT_SYSTEM_ACTIONS` |
 
 Features are selected independently. Disabled tools disappear from launcher search and Settings, and disabled calculation formats stay in normal search. Settings shortcuts become Command–1…N in the order of the remaining sections. Disabling scripts skips script discovery; disabling translation skips the startup Keychain read. Saved preferences, links, script folders, and credentials are retained for future builds.
 
@@ -235,6 +269,6 @@ sh scripts/check-appearance.sh
 cognitive --threshold 15 Sources Flint Tests
 ```
 
-Desktop appearance checks run offscreen by default and do not activate their windows or take keyboard focus. To intentionally watch the windows during a visual inspection, run `FLINT_UI_TESTS_VISIBLE=1 sh scripts/check-appearance.sh`. Image previews can still be rendered to files while the windows stay offscreen.
+Desktop appearance checks run offscreen and do not activate their windows or take keyboard focus. Image previews can be rendered to files while the windows stay offscreen.
 
 This version contains application search and launching, quick links, DeepSeek translation, numeric calculations, number base and color conversion, system actions, and shortcut settings.
