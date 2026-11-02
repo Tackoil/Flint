@@ -291,7 +291,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     func resetSearch() {
         _ = view
         cancelScript()
-        refreshScripts()
+        refreshApplications()
         chrome.setQuickLinkQueries(nil)
         resultInputs.removeAll()
         isRoundingEnabled = true
