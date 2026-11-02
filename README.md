@@ -1,5 +1,7 @@
 # Flint
 
+![Flint — Application launcher for macOS](design/readme-banner.png)
+
 A small Raycast-style application launcher built with AppKit for macOS 13 and later. No external dependencies.
 
 The launcher uses untinted Liquid Glass on macOS 26 and later, with a frosted material on older versions. Both panel states use the same glass surface, and the launcher and Settings follow the system’s light or dark appearance. The empty search bar is a compact capsule that expands to show results as you type. Expanding and collapsing animate from the same top edge with a consistent 28-point corner radius. Reduce Motion disables the transition.

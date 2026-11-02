@@ -1,8 +1,0 @@
-Tool: built-in image_gen
-
-Use case: background-extraction
-Asset type: monochrome macOS menu bar template icon.
-Input image: edit target, the approved Flint application icon.
-Primary request: Extract only the existing flame from the supplied icon and convert it to a solid black silhouette on actual transparency. Remove the entire dark rounded-square tile and its shadows. Keep the flame's outer contour, asymmetrical tip, rounded base, proportions and inner teardrop cutout exactly as in the original. The inner teardrop is transparent too. Do not redesign or reinterpret the flame. Preserve the original orientation.
-Composition: center the isolated flame on a square transparent canvas, scale uniformly so its height occupies 90% of the canvas. No tile or container. Black silhouette only, all interior flame pixels fully opaque black, smoothly antialiased edges.
-Constraints: preserve exact silhouette. No gradients, gray fills, color, shadows, outlines, extra flames, texture, text, frame, background, or watermark. True alpha transparency everywhere outside the flame and inside its cutout. This will be rendered at 18 pixels high.
