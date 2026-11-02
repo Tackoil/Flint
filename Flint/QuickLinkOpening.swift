@@ -108,6 +108,9 @@ final class QuickLinkQueryBar: NSScrollView, NSTextFieldDelegate {
         guard let index = focusedIndex else { return }
         if index == 0 {
             onReturnToSearch?()
+            // The deferred editing notification may not run inside a nested event loop.
+            // Reflect the new focus as soon as the return-to-search action finishes.
+            updateFocusHighlight(fields.first { $0.currentEditor() != nil })
         } else {
             focus(fields[index - 1])
         }

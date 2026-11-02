@@ -134,6 +134,12 @@ private func checkQuickLinkCompletionAndHighlight(_ store: QuickLinkStore) {
         checkQuickLinkHighlight(bar, field: fields[0])
     }
     pressQuickLinkEscape(bar, field: fields[0])
+    precondition(search.currentEditor() != nil && !bar.isEditing, "Escape must return focus to search")
+    checkQuickLinkHighlight(bar, field: nil)
+    bar.focusFirst()
+    RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+    checkQuickLinkHighlight(bar, field: fields[0])
+    pressQuickLinkEscape(bar, field: fields[0])
     checkQuickLinkHighlight(bar, field: nil)
     window.orderOut(nil)
 }
@@ -146,8 +152,10 @@ private func checkQuickLinkHighlight(_ bar: QuickLinkQueryBar, field: NSTextFiel
         precondition(bar.focusHighlight.superview?.subviews.last === bar.focusHighlight,
                      "The focus glow must draw above query backgrounds")
     } else {
-        RunLoop.current.run(until: Date().addingTimeInterval(0.01))
-        precondition(bar.focusHighlight.targetFrame == nil, "Returning to search must clear the query highlight")
+        precondition(bar.focusHighlight.targetFrame == nil,
+                     "Returning to search must clear the query highlight immediately")
+        precondition(bar.focusHighlight.alphaValue == 0 && bar.focusHighlight.layer?.shadowOpacity == 0,
+                     "Returning to search must hide the outline and cancel its glow")
     }
 }
 
@@ -192,7 +200,7 @@ private func checkQuickLinkFocusGlow() {
     precondition(fields[1].currentEditor() != nil)
     _ = queries.control(fields[1], textView: NSTextView(), doCommandBy: #selector(NSResponder.cancelOperation(_:)))
     _ = queries.control(fields[0], textView: NSTextView(), doCommandBy: #selector(NSResponder.cancelOperation(_:)))
-    RunLoop.current.run(until: Date().addingTimeInterval(0.01))
+    checkQuickLinkHighlight(queries, field: nil)
     precondition(queries.focusHighlight.alphaValue == 0 && header.searchField.currentEditor() != nil)
     precondition(queries.focusHighlight.layer?.shadowOpacity == 0)
     print("PASS: Tab and Escape blink a glow only on the focused query, cancel old pulses, and respect Reduce Motion")
