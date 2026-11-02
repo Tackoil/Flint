@@ -16,7 +16,7 @@ The launcher fades in when shown and fades out when dismissed, including with Es
 
 ## Run
 
-Open `Flint.xcodeproj`, select the **Flint** scheme, and run on **My Mac**. Local builds use ad hoc signing so macOS can register Flint as a login item.
+Open `Flint.xcodeproj`, select the **Flint** scheme, and run on **My Mac**. Local builds use automatic Apple Development signing with team `Z9W85A679L`, configured in `Config/Base.xcconfig`. A matching signing certificate and private key must be available in your keychain.
 
 Or build and open from the terminal:
 
