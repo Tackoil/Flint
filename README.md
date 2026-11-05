@@ -272,3 +272,8 @@ cognitive --threshold 15 Sources Flint Tests
 Desktop appearance checks run offscreen and do not activate their windows or take keyboard focus. Image previews can be rendered to files while the windows stay offscreen.
 
 This version contains application search and launching, quick links, DeepSeek translation, numeric calculations, number base and color conversion, system actions, and shortcut settings.
+
+## License
+
+Flint's original work is licensed under the [MIT License](LICENSE).
+See [third-party notices](THIRD_PARTY_NOTICES.md) for material covered by other terms.
