@@ -248,20 +248,38 @@ final class AppearanceSurfaceView: NSView {
     }
 }
 
-private final class ActionGroupResizeAnimation: NSAnimation {
+private final class ActionGroupResizeAnimation {
+    private let duration: TimeInterval
     private let update: (CGFloat) -> Void
+    private var timer: Timer?
+    private var startTime: TimeInterval = 0
 
     init(duration: TimeInterval, update: @escaping (CGFloat) -> Void) {
+        self.duration = duration
         self.update = update
-        super.init(duration: duration, animationCurve: .easeInOut)
-        animationBlockingMode = .nonblocking
-        frameRate = 120
     }
 
-    required init?(coder: NSCoder) { fatalError("Use init(duration:update:)") }
+    deinit { timer?.invalidate() }
 
-    override var currentProgress: NSAnimation.Progress {
-        didSet { update(CGFloat(currentValue)) }
+    func start() {
+        stop()
+        startTime = ProcessInfo.processInfo.systemUptime
+        let timer = Timer(timeInterval: 1.0 / 120, repeats: true) { [weak self] _ in self?.advance() }
+        self.timer = timer
+        RunLoop.main.add(timer, forMode: .common)
+    }
+
+    func stop() {
+        timer?.invalidate()
+        timer = nil
+    }
+
+    private func advance() {
+        // Anchor progress to the requested start, so a delayed frame catches up
+        // instead of leaving newly visible controls clipped in the old surface.
+        let progress = min(1, (ProcessInfo.processInfo.systemUptime - startTime) / duration)
+        update(CGFloat((1 - cos(.pi * progress)) / 2))
+        if progress == 1 { stop() }
     }
 }
 

@@ -46,8 +46,21 @@ func checkActionGroupResizing() {
                  "Interrupting an action group resize must keep its displayed width")
     checkActionGroupTransition(actions, from: interruptedFrame)
     checkRapidRoundingChanges(header, actions: actions)
+    checkDelayedActionGroupFrame(header, actions: actions)
     print("PASS: action group width animates for action titles, precision modes and timestamp units with a fixed right edge")
     print("PASS: interrupted action group resizing continues from its displayed width")
+}
+
+@MainActor
+private func checkDelayedActionGroupFrame(_ header: LauncherHeaderFooter, actions: ActionGroupView) {
+    header.updatePrecision(10, isRounding: false)
+    // Simulate a busy main thread before the first animation frame can run.
+    Thread.sleep(forTimeInterval: 0.3)
+    RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+    precondition(abs(actions.displayedWidth - actions.targetWidth) < 1,
+                 "A delayed frame must finish the action group resize at its target width")
+    checkActionGroupSurfaceEdges(actions, expectedRightEdge: actions.bounds.maxX)
+    print("PASS: delayed animation frames catch up to the target glass width without moving its right edge")
 }
 
 @MainActor

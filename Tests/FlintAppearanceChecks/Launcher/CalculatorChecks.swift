@@ -138,11 +138,19 @@ private func checkResultActionKeyRelease(_ controller: ApplicationsViewControlle
 private func checkResultActionLayout(_ view: NSView, name: String) {
     Appearance.revealLauncher(height: LauncherDisplayMode.calculator.height, on: view, duration: 0) {}
     view.layoutSubtreeIfNeeded()
-    RunLoop.current.run(until: Date().addingTimeInterval(0.3))
     let views = calculatorDescendants(of: view)
     let actions = views.compactMap { $0 as? ActionGroupView }.first!
+    let targetFrame = NSRect(x: actions.bounds.maxX - actions.targetWidth, y: 0,
+                             width: actions.targetWidth, height: actions.bounds.height)
     for button in calculatorDescendants(of: actions).compactMap({ $0 as? NSButton }).filter({ !$0.isHiddenOrHasHiddenAncestor }) {
-        precondition(actions.surface.frame.contains(actions.convert(button.bounds, from: button)), "Action button must fit in the glass: \(button.accessibilityLabel() ?? "")")
+        precondition(targetFrame.contains(actions.convert(button.bounds, from: button)),
+                     "The resize target must fit the updated action buttons: \(button.accessibilityLabel() ?? "") (\(name)); button: \(actions.convert(button.bounds, from: button)); target: \(targetFrame)")
+    }
+    RunLoop.current.run(until: Date().addingTimeInterval(0.3))
+    for button in calculatorDescendants(of: actions).compactMap({ $0 as? NSButton }).filter({ !$0.isHiddenOrHasHiddenAncestor }) {
+        let frame = actions.convert(button.bounds, from: button)
+        precondition(actions.surface.frame.contains(frame),
+                     "Action button must fit in the glass: \(button.accessibilityLabel() ?? "") (\(name)); button: \(frame); glass: \(actions.surface.frame); displayed/target: \(actions.displayedWidth)/\(actions.targetWidth)")
     }
     guard let directory = ProcessInfo.processInfo.environment["FLINT_CALCULATOR_PREVIEW_DIR"] else { return }
     let bounds = NSRect(x: 0, y: 0, width: view.bounds.width, height: LauncherDisplayMode.calculator.height)
