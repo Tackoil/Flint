@@ -15,6 +15,7 @@ final class ScriptCommandView: NSView, NSTextFieldDelegate {
     private(set) var isRunning = false
     private(set) var result: ScriptRunResult?
     var onClose: (() -> Void)?
+    var onSuccess: (() -> Void)?
     var onSilentSuccess: (() -> Void)?
 
     init(command: ScriptCommand) {
@@ -171,7 +172,10 @@ final class ScriptCommandView: NSView, NSTextFieldDelegate {
             : result.output
         output.string = text.isEmpty ? (result.succeeded ? "Script completed without output." : "The script did not produce output.") : text
         copyButton.isEnabled = !result.output.isEmpty
-        if command.mode == .silent && result.succeeded { onSilentSuccess?() }
+        if result.succeeded {
+            onSuccess?()
+            if command.mode == .silent { onSilentSuccess?() }
+        }
     }
 
     private func finishError(_ error: Error) {

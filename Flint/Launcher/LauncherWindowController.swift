@@ -14,7 +14,7 @@ private final class LauncherPanel: NSPanel {
 
 @MainActor
 final class LauncherWindowController: NSWindowController, NSWindowDelegate {
-    private let applicationsController = ApplicationsViewController()
+    private let applicationsController = ApplicationsViewController(usage: LauncherUsage(defaults: .standard))
     private let preferences: LauncherPreferences
     private let keepsOpenOnFocusLoss: Bool
     private var displayMode: LauncherDisplayMode?

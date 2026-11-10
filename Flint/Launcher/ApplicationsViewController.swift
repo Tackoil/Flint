@@ -78,6 +78,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     private var scriptView: ScriptCommandView?
     var isPresentingScript: Bool { scriptView != nil }
     private var results: [LauncherItem] = []
+    private let usage: LauncherUsage
     private let actionExecutor = SystemActionExecutor()
     private let errorNotifier = LauncherErrorNotifier()
     private var isLoading = false
@@ -97,11 +98,13 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
          translationPreferences: TranslationPreferences = TranslationPreferences(),
          quickLinkStore: QuickLinkStore = QuickLinkStore(),
          scriptStore: ScriptCommandStore = ScriptCommandStore(),
+         usage: LauncherUsage = LauncherUsage(),
          openQuickLinkURL: @escaping @MainActor (QuickLink, URL, @escaping (Error?) -> Void) -> Void = QuickLinkOpener.open) {
         self.translationSession = translationSession ?? TranslationSession()
         self.translationPreferences = translationPreferences
         self.quickLinkStore = quickLinkStore
         self.scriptStore = scriptStore
+        self.usage = usage
         self.openQuickLinkURL = openQuickLinkURL
         super.init(nibName: nil, bundle: nil)
     }
@@ -343,7 +346,8 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         } else {
             calculation = evaluated
         }
-        results = isExpanded && calculation == nil ? ApplicationSearch.filter(items, query: query) : []
+        results = isExpanded && calculation == nil
+            ? ApplicationSearch.filter(items, query: query, usageCounts: usage.counts) : []
     }
 
     private var availableLauncherItems: [LauncherItem] {
@@ -518,11 +522,17 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
 
     private func activateUtility(_ item: LauncherItem) {
         if case .script(let command) = item { showScript(command); return }
-        if item == .scriptCommands { onShowScriptSettings?(); return }
+        if item == .scriptCommands { openUtility(item, handler: onShowScriptSettings); return }
         if case .quickLink(let link) = item { openQuickLink(link); return }
-        if item == .createQuickLink { onCreateQuickLink?(); return }
+        if item == .createQuickLink { openUtility(item, handler: onCreateQuickLink); return }
         if item == .translation { enterTranslationMode() }
         if item == .qrCode { enterQRCodeMode() }
+    }
+
+    private func openUtility(_ item: LauncherItem, handler: (() -> Void)?) {
+        guard let handler else { return }
+        usage.recordUse(of: item)
+        handler()
     }
 
     private var selectedQueryLink: QuickLink? {
@@ -554,6 +564,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
         panel.autoresizingMask = [.width, .height]
         view.addSubview(panel)
         panel.onClose = { [weak self] in self?.cancelScript() }
+        panel.onSuccess = { [weak self] in self?.usage.recordUse(of: .script(command)) }
         panel.onSilentSuccess = { [weak self] in self?.cancelScript(); self?.onDismiss?() }
         view.window?.makeFirstResponder(panel)
         panel.begin()
@@ -631,6 +642,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
                 if let error {
                     self.showQuickLinkError(link, error: error)
                 } else {
+                    self.usage.recordUse(of: .quickLink(link))
                     self.onDismiss?()
                 }
             }
@@ -671,6 +683,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
 
     private func enterQRCodeMode() {
         guard BuildFeatures.qrCode else { return }
+        usage.recordUse(of: .qrCode)
         resultInputs.removeAll()
         isQRCodeMode = true
         chrome.searchField.stringValue = ""
@@ -694,6 +707,7 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
 
     private func enterTranslationMode() {
         guard BuildFeatures.translation else { return }
+        usage.recordUse(of: .translation)
         resultInputs.removeAll()
         isTranslationMode = true
         isTranslationLanguageSwitchingEnabled = true
@@ -772,15 +786,21 @@ final class ApplicationsViewController: NSViewController, NSTextFieldDelegate {
     private func finishAction(_ action: SystemAction, error: Error?) {
         isOpening = false
         chrome.openButton.isEnabled = !results.isEmpty
-        guard let error else { return }
-        Task { await errorNotifier.notifyFailure(for: action, error: error) }
+        if let error {
+            Task { await errorNotifier.notifyFailure(for: action, error: error) }
+        } else {
+            usage.recordUse(of: .action(action))
+        }
     }
 
     private func finishOpening(_ app: ApplicationRecord, error: Error?) {
         isOpening = false
         chrome.openButton.isEnabled = !results.isEmpty
-        guard let error else { return }
-        Task { await errorNotifier.notifyLaunchFailure(for: app, error: error) }
+        if let error {
+            Task { await errorNotifier.notifyLaunchFailure(for: app, error: error) }
+        } else {
+            usage.recordUse(of: .application(app))
+        }
     }
 
     private func presentDialog(title: String, message: String, buttonTitles: [String],

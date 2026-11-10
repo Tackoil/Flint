@@ -7,6 +7,7 @@ func checkQuickLinks() {
     defer { defaults.removePersistentDomain(forName: suite) }
     let store = QuickLinkStore(defaults: defaults)
     checkQuickLinkSearch(store)
+    checkQuickLinkFrequency(store, defaults: defaults)
     checkQuickLinkArguments(store)
     checkQuickLinkCompletionAndHighlight(store)
     checkQuickLinkFocusGlow()
@@ -15,6 +16,41 @@ func checkQuickLinks() {
     checkQuickLinkEditor(store)
     checkQuickLinkSettings(store)
     print("PASS: quick links search, launch, refresh after edits, edit queries in the search bar, navigate with Tab, validate, and persist")
+}
+
+@MainActor
+private func checkQuickLinkFrequency(_ store: QuickLinkStore, defaults: UserDefaults) {
+    let archive = QuickLink(name: "Flint Usage Archive", link: "https://example.com/archive")
+    let workspace = QuickLink(name: "Flint Usage Workspace", link: "https://example.com/workspace")
+    try! store.save(archive)
+    try! store.save(workspace)
+    defer { try! store.remove(id: archive.id); try! store.remove(id: workspace.id) }
+    let usage = LauncherUsage(defaults: defaults)
+    var opened: URL?
+    let controller = ApplicationsViewController(quickLinkStore: store, usage: usage, openQuickLinkURL: { _, url, done in
+        opened = url
+        done(nil)
+    })
+    let window = quickLinkWindow(controller: controller)
+    defer { window.orderOut(nil) }
+    let search = quickLinkViews(controller.view).compactMap { $0 as? NSTextField }.first { $0.isEditable }!
+    let table = quickLinkViews(controller.view).compactMap { $0 as? NSTableView }.first!
+
+    quickLinkSearch("Flint Usage", controller: controller, search: search)
+    precondition(table.numberOfRows == 2 && table.selectedRow == 0)
+    table.selectRowIndexes(IndexSet(integer: 1), byExtendingSelection: false)
+    _ = controller.control(search, textView: NSTextView(), doCommandBy: #selector(NSResponder.insertNewline(_:)))
+    precondition(opened?.absoluteString == workspace.link)
+    let item = LauncherItem.quickLink(workspace)
+    precondition(LauncherUsage(defaults: defaults).counts == [item.usageID: 1])
+
+    quickLinkSearch("Flint Usage", controller: controller, search: search)
+    renderQuickLinkPreview(controller.view, name: "frequency")
+    _ = controller.control(search, textView: NSTextView(), doCommandBy: #selector(NSResponder.insertNewline(_:)))
+    precondition(table.selectedRow == 0 && opened?.absoluteString == workspace.link,
+                 "The frequently opened link must become the default result")
+    precondition(LauncherUsage(defaults: defaults).counts == [item.usageID: 2])
+    print("PASS: the launcher learns and saves how often a result is opened")
 }
 
 @MainActor
@@ -358,7 +394,8 @@ private func checkManyQuickLinkQueries(_ store: QuickLinkStore) {
 private func checkQuickLinkFailure(_ store: QuickLinkStore) {
     let link = QuickLink(name: "Missing Project", link: "/tmp/flint-does-not-exist-\(UUID().uuidString)")
     try! store.save(link)
-    let controller = ApplicationsViewController(quickLinkStore: store)
+    let usage = LauncherUsage()
+    let controller = ApplicationsViewController(quickLinkStore: store, usage: usage)
     let window = quickLinkWindow(controller: controller)
     let search = quickLinkViews(controller.view).compactMap { $0 as? NSTextField }.first { $0.isEditable }!
     var dismissed = false
@@ -366,6 +403,7 @@ private func checkQuickLinkFailure(_ store: QuickLinkStore) {
     quickLinkSearch(link.name, controller: controller, search: search)
     _ = controller.control(search, textView: NSTextView(), doCommandBy: #selector(NSResponder.insertNewline(_:)))
     precondition(controller.isPresentingDialog && !dismissed)
+    precondition(usage.counts.isEmpty, "Failed opens must not affect ranking")
     controller.cancelDialog()
     precondition(!controller.isPresentingDialog)
     let open = quickLinkViews(controller.view).compactMap { $0 as? NSButton }.first { $0.accessibilityLabel() == "Open Quick Link" }!

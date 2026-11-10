@@ -55,6 +55,7 @@
 			"isa" = "PBXSourcesBuildPhase";
 			"buildActionMask" = "2147483647";
 			"files" = (
+				"EF0140000000000000000002",
 				"EF0130000000000000000002",
 				"EF012000000000000000000E",
 				"EF012000000000000000000A",
@@ -648,6 +649,16 @@
 		"EF0130000000000000000002" = {
 			"isa" = "PBXBuildFile";
 			"fileRef" = "EF0130000000000000000001";
+		};
+		"EF0140000000000000000001" = {
+			"path" = "LauncherUsage.swift";
+			"isa" = "PBXFileReference";
+			"lastKnownFileType" = "sourcecode.swift";
+			"sourceTree" = "<group>";
+		};
+		"EF0140000000000000000002" = {
+			"isa" = "PBXBuildFile";
+			"fileRef" = "EF0140000000000000000001";
 		};
 		"59E1BEE911F66DA37FEBACDC" = {
 			"isa" = "XCBuildConfiguration";
@@ -1339,6 +1350,7 @@
 				"EF0130000000000000000001",
 				"EA0040000000000000000001",
 				"EA0010000000000000000003",
+				"EF0140000000000000000001",
 				"93147C56E9C24E5BA478D210",
 			);
 			"path" = "Launcher";

@@ -23,6 +23,13 @@ enum LauncherItem: Hashable, Identifiable, Sendable {
         }
     }
 
+    var usageID: String {
+        if case .application(let app) = self, let bundleIdentifier = app.bundleIdentifier {
+            return "bundle:\(bundleIdentifier)"
+        }
+        return id
+    }
+
     var name: String {
         switch self {
         case .application(let application): return application.name

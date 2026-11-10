@@ -17,6 +17,16 @@ struct ApplicationSearchTests {
         #expect(ApplicationSearch.filter(apps, query: "mail").map(\.name) == ["Mail", "MailMate", "Super Mail"])
     }
 
+    @Test func frequentlyUsedResultsRiseWithinTheSameMatchTier() {
+        let names = ["Mail", "Mail Archive", "Mail Work", "New Mail", "Mega Mail", "Main Trail", "Calendar"]
+        let items = names.map { LauncherItem.application(app($0)) }
+        let counts = [items[2].usageID: 2, items[3].usageID: 9, items[4].usageID: 12,
+                      items[5].usageID: 15, items[6].usageID: 20]
+        let results = ApplicationSearch.filter(items.reversed(), query: "mail", usageCounts: counts)
+        #expect(results.map(\.name) == ["Mail", "Mail Work", "Mail Archive", "Mega Mail", "New Mail", "Main Trail"])
+        #expect(ApplicationSearch.filter(items.reversed(), query: "mail").map(\.name) == Array(names.dropLast()))
+    }
+
     @Test func searchIgnoresCaseAndDiacritics() {
         #expect(ApplicationSearch.filter([app("Café")], query: " CAFE ").count == 1)
     }
