@@ -16,7 +16,9 @@ The launcher fades in when shown and fades out when dismissed, including with Es
 
 ## Run
 
-Open `Flint.xcodeproj`, select the **Flint** scheme, and run on **My Mac**. Local builds use automatic Apple Development signing with team `Z9W85A679L`, configured in `Config/Base.xcconfig`. A matching signing certificate and private key must be available in your keychain.
+Building requires Xcode 27 or later with the macOS 27 SDK or later. The app targets macOS 13 and later.
+
+Open `Flint.xcodeproj`, select the **Flint** scheme, and run on **My Mac**. Local builds use ad hoc signing. You can build and run Flint without an Apple Developer account or a signing certificate.
 
 Or build and open from the terminal:
 
