@@ -1,5 +1,9 @@
 #!/bin/sh
 # Shared by the build and appearance-check entry points.
+flint_feature_names() {
+    echo 'calculator timestamps colors number-bases qr translation quick-links scripts system-actions'
+}
+
 flint_feature_flags() {
     case "$1" in
         all) printf '%s\n' 'FLINT_CALCULATOR FLINT_TIMESTAMPS FLINT_COLORS FLINT_NUMBER_BASES FLINT_QR FLINT_TRANSLATION FLINT_QUICK_LINKS FLINT_SCRIPTS FLINT_SYSTEM_ACTIONS'; return ;;
